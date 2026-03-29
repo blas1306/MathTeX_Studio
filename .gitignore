@@ -1,0 +1,59 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+
+# =========================
+# Entornos
+# =========================
+venv/
+.venv/
+
+# =========================
+# IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# LaTeX outputs
+# =========================
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.tex
+
+# =========================
+# Archivos generados
+# =========================
+*.pdf
+*.png
+
+# =========================
+# Test / debug outputs
+# =========================
+collect_*.txt
+pytest_*.txt
+qt_*.txt
+tmp_view.txt
+
+# =========================
+# Temporales
+# =========================
+tmp_runtime_probe/
+tmp_test_projects/
+tmpw*/
+tmp_*.tex
+tmp_*.pdf
+tmp_*.mtex
+untitled*.mtex
+
+# =========================
+# Sistema
+# =========================
+CON

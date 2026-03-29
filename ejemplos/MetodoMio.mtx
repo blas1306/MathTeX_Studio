@@ -1,0 +1,11 @@
+from miMetodo import blas
+
+a = 5;
+b = 8;
+c = -444;
+
+f(x) = x.^3 + a*x.^2 + b*x + c;
+x0 = -2;
+tol = 1e-8;
+
+[x, iter, res] = blas(f, x0, tol)

@@ -1,0 +1,6 @@
+function resultado = squareroot(x)
+    if x < 0
+        \error("Tiene que ser positivo.")
+    end
+    resultado = \sqrt(x)
+end
