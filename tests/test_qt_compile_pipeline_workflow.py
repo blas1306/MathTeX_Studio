@@ -161,6 +161,54 @@ def test_failed_build_preserves_previous_valid_pdf_across_multiple_attempts(
     assert preview_messages == []
 
 
+def test_failed_build_adds_probable_cause_from_compile_log_to_logs_panel(
+    studio_window: MathTeXQtWindow,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert studio_window.current_mtex_path is not None
+
+    source_path = studio_window.current_mtex_path
+
+    def _fake_execute(path, contexto, abrir_pdf=False, build_dir=None):
+        del contexto, abrir_pdf
+        build_path = Path(build_dir)
+        source = Path(path)
+        build_path.mkdir(parents=True, exist_ok=True)
+        (build_path / f"{source.stem}.tex").write_text(
+            "\\documentclass{article}\n"
+            "\\begin{document}\n"
+            "\\[\n"
+            "\\left[\\begin{matrix}1 & 2\\\\3 & 4\\end{matrix}\\right]\n"
+            "\\]\n"
+            "\\end{document}\n",
+            encoding="utf-8",
+        )
+        log_text = (
+            "! Misplaced alignment tab character &.\n"
+            "l.19 \\left[\\begin{matrix}1 &\n"
+            " 2\\\\3 & 4\\end{matrix}\\right]\n"
+        )
+        (build_path / f"{source.stem}.log").write_text(log_text, encoding="utf-8")
+        (build_path / "compile.log").write_text(log_text, encoding="utf-8")
+        return None
+
+    monkeypatch.setattr("qt_app.ejecutar_mtex", _fake_execute)
+
+    studio_window._run_mtex_compilation(source_path, trigger="manual")
+    result = studio_window.latest_mtex_execution_result
+
+    assert result is not None
+    assert result.success is False
+    assert any(
+        entry.source == "latex" and "Misplaced alignment tab character &." in entry.message
+        for entry in result.logs
+    )
+    assert any(
+        entry.source == "latex" and "amsmath" in entry.message
+        for entry in result.logs
+    )
+
+
 def test_successful_build_after_failure_replaces_previous_valid_pdf_cleanly(
     studio_window: MathTeXQtWindow,
     monkeypatch: pytest.MonkeyPatch,

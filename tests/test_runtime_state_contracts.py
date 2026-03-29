@@ -121,7 +121,7 @@ def test_multiple_document_runs_do_not_leak_last_plot(tmp_path: Path):
     second_tex = (tmp_path / "build_second" / "second.tex").read_text(encoding="utf-8")
 
     assert r"\textcolor{red}{[No se encontr" in second_tex
-    assert "last_plot" in second_tex
+    assert r"last\_plot" in second_tex
     assert env_ast.get("last_plot") is None
     assert env_ast.get("_plot_files") in (None, {})
     assert env_ast.get("plots") in (None, [])

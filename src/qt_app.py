@@ -30,7 +30,13 @@ from latex_lang import (
     get_working_dir,
     workspace_snapshot,
 )
-from mtex_executor import ejecutar_mtex, split_code_statements, split_code_statements_with_lines
+from mtex_executor import (
+    ejecutar_mtex,
+    explain_latex_build_failure,
+    split_code_statements,
+    split_code_statements_with_lines,
+    summarize_latex_build_failure,
+)
 from execution_results import StructuredLogCollector, variable_summaries_from_snapshot, ExecutionResult
 from logs_output_widget import LogsOutputWidget
 from pdf_preview import PdfPreviewWidget
@@ -1163,6 +1169,15 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
     def _current_menu_context(self) -> str:
         return STUDIO_MENU_CONTEXT if self._is_studio_tab_active() else INTERACTIVE_MENU_CONTEXT
 
+    def _set_active_main_tab(self, index: int) -> None:
+        tabs = self.central_tabs
+        if tabs is None:
+            return
+        if tabs.currentIndex() != index:
+            tabs.setCurrentIndex(index)
+        else:
+            self._handle_active_context_changed()
+
     def _handle_active_context_changed(self) -> None:
         self._sync_console_for_active_tab()
         self._refresh_menu_bar_for_active_context()
@@ -2029,6 +2044,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
                 idx = self.script_tab_widget.indexOf(widget)
                 if idx >= 0:
                     self.script_tab_widget.setCurrentIndex(idx)
+            self._set_active_main_tab(0)
             self.append_output(f"[Script] {path.name} was already open. Tab activated.")
             return
         try:
@@ -2037,6 +2053,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             QtWidgets.QMessageBox.critical(self, "MathTeX", f"Could not open the file.\n{exc}")
             return
         self._create_script_document(name=path.name, path=path, content=content, announce=False)
+        self._set_active_main_tab(0)
     # ----- MTeX workspace -------------------------------------------------
     def _load_recent_projects(self) -> None:
         self.project_registry.load()
@@ -2053,6 +2070,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         if self.project_stack is None or self.project_home_widget is None:
             return
         self.project_stack.setCurrentWidget(self.project_home_widget)
+        self._set_active_main_tab(1)
         self._update_window_title()
         self._refresh_menu_bar_for_active_context()
 
@@ -2060,6 +2078,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         if self.project_stack is None or self.project_workspace_widget is None:
             return
         self.project_stack.setCurrentWidget(self.project_workspace_widget)
+        self._set_active_main_tab(1)
         self._update_window_title()
         self._refresh_menu_bar_for_active_context()
 
@@ -2492,6 +2511,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
                 self.preview.set_message("Compile to refresh the preview.")
         finally:
             self._ignore_mtex_text_changes = False
+        self._set_active_main_tab(1)
         self._refresh_menu_bar_for_active_context()
 
     def _save_mtex_file(self) -> bool:
@@ -2522,6 +2542,14 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             return None
         if self.current_mtex_path:
             path = self.current_mtex_path
+            if path.suffix.lower() != ".mtex":
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "MathTeX",
+                    "Only .mtex documents can be compiled to PDF in MTeX Studio.\n"
+                    "Open .mtx scripts in the Interactive Editor and use Run All instead.",
+                )
+                return None
             if not self._persist_mtex(path, announce=False):
                 return None
         else:
@@ -2606,6 +2634,12 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             self._load_pdf_preview(generated_pdf_path)
             self._set_build_status(f"Build: {status_prefix} succeeded", tone="success")
         else:
+            latex_summary = summarize_latex_build_failure(artifacts.compile_log_path)
+            if latex_summary:
+                collector.add_entry(f"LaTeX error summary: {latex_summary}", level="error", source="latex")
+            latex_explanation = explain_latex_build_failure(artifacts.compile_log_path, artifacts.tex_path)
+            if latex_explanation:
+                collector.add_entry(f"Probable cause: {latex_explanation}", level="warning", source="latex")
             collector.add_entry(
                 f"{trigger_label} failed or did not produce a new PDF.",
                 level="error",

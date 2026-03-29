@@ -8,7 +8,12 @@ import platform
 from dataclasses import dataclass
 from pathlib import Path
 
-from diagnostics import make_build_diagnostic, render_diagnostic
+from diagnostics import (
+    diagnostic_line_offset,
+    make_build_diagnostic,
+    render_diagnostic,
+    runtime_error_from_exception,
+)
 
 # ImportÃ¡ tu propio motor MathTeX
 from latex_lang import (
@@ -62,6 +67,26 @@ def expr_to_latex(expr):
 
 
 _VAR_NOT_FOUND = object()
+_LATEX_TEXT_ESCAPES = {
+    "\\": r"\textbackslash{}",
+    "&": r"\&",
+    "%": r"\%",
+    "$": r"\$",
+    "#": r"\#",
+    "_": r"\_",
+    "{": r"\{",
+    "}": r"\}",
+    "~": r"\textasciitilde{}",
+    "^": r"\textasciicircum{}",
+}
+
+
+def _escape_latex_text(text):
+    return "".join(_LATEX_TEXT_ESCAPES.get(ch, ch) for ch in str(text))
+
+
+def _latex_message(text, *, color="red"):
+    return f"\\textcolor{{{color}}}{{{_escape_latex_text(text)}}}"
 
 
 def _parse_one_based_index(token):
@@ -70,8 +95,91 @@ def _parse_one_based_index(token):
         raise ValueError("indice no valido")
     idx = int(cleaned)
     if idx < 1:
-        raise ValueError("los indices en \\var{...} empiezan en 1")
+        raise ValueError("los indices empiezan en 1")
     return idx - 1
+
+
+def _raise_index_out_of_range(name, index, size):
+    raise ValueError(f"indice {index} fuera de rango para {name} (maximo {size})")
+
+
+def _resolve_sequence_index(value, base_name, index):
+    if isinstance(value, sp.MatrixBase):
+        if value.cols == 1:
+            size = value.rows
+            if index >= size:
+                _raise_index_out_of_range(base_name, index + 1, size)
+            return value[index, 0]
+        if value.rows == 1:
+            size = value.cols
+            if index >= size:
+                _raise_index_out_of_range(base_name, index + 1, size)
+            return value[0, index]
+        raise ValueError(f"{base_name} es una matriz; usa dos indices")
+
+    if isinstance(value, np.ndarray):
+        if value.ndim == 0:
+            raise ValueError(f"{base_name} es escalar y no admite indices")
+        if value.ndim == 1:
+            size = value.shape[0]
+            if index >= size:
+                _raise_index_out_of_range(base_name, index + 1, size)
+            return value[index]
+        if value.ndim == 2 and 1 in value.shape:
+            size = max(value.shape)
+            if index >= size:
+                _raise_index_out_of_range(base_name, index + 1, size)
+            return value.reshape(-1)[index]
+        if value.ndim == 2:
+            raise ValueError(f"{base_name} es una matriz; usa dos indices")
+
+    if isinstance(value, (list, tuple)):
+        size = len(value)
+        if index >= size:
+            _raise_index_out_of_range(base_name, index + 1, size)
+        return value[index]
+
+    raise ValueError(f"{base_name} es escalar y no admite indices")
+
+
+def _resolve_matrix_index(value, base_name, row_index, col_index):
+    if isinstance(value, sp.MatrixBase):
+        rows, cols = value.shape
+        if row_index >= rows or col_index >= cols:
+            raise ValueError(
+                f"indices ({row_index + 1}, {col_index + 1}) fuera de rango para {base_name} "
+                f"({rows}x{cols})"
+            )
+        return value[row_index, col_index]
+
+    if isinstance(value, np.ndarray):
+        if value.ndim != 2:
+            if value.ndim == 1:
+                raise ValueError(f"{base_name} es un vector; usa un solo indice")
+            raise ValueError(f"{base_name} no admite dos indices")
+        rows, cols = value.shape
+        if row_index >= rows or col_index >= cols:
+            raise ValueError(
+                f"indices ({row_index + 1}, {col_index + 1}) fuera de rango para {base_name} "
+                f"({rows}x{cols})"
+            )
+        return value[row_index, col_index]
+
+    if isinstance(value, (list, tuple)):
+        rows = len(value)
+        if row_index >= rows:
+            raise ValueError(f"fila {row_index + 1} fuera de rango para {base_name} (maximo {rows})")
+        row_value = value[row_index]
+        if not isinstance(row_value, (list, tuple, np.ndarray)):
+            raise ValueError(f"{base_name} no es una matriz indexable con dos indices")
+        cols = len(row_value)
+        if col_index >= cols:
+            raise ValueError(
+                f"columna {col_index + 1} fuera de rango para {base_name}[{row_index + 1}] (maximo {cols})"
+            )
+        return row_value[col_index]
+
+    raise ValueError(f"{base_name} no es una matriz indexable con dos indices")
 
 
 def _resolve_var_reference(ref, contexto):
@@ -79,12 +187,12 @@ def _resolve_var_reference(ref, contexto):
     if expr in contexto:
         return contexto[expr]
 
-    m = re.fullmatch(r"([a-zA-Z_][a-zA-Z0-9_]*)\[(.+)\]", expr)
+    m = re.fullmatch(r"([a-zA-Z_][a-zA-Z0-9_]*)(?:\((.+)\)|\[(.+)\])", expr)
     if not m:
         return _VAR_NOT_FOUND
 
     base_name = m.group(1)
-    raw_indices = m.group(2)
+    raw_indices = m.group(2) if m.group(2) is not None else m.group(3)
     if base_name not in contexto:
         return _VAR_NOT_FOUND
 
@@ -97,21 +205,11 @@ def _resolve_var_reference(ref, contexto):
 
     if len(tokens) == 1:
         i = _parse_one_based_index(tokens[0])
-        if isinstance(value, sp.MatrixBase):
-            if value.cols == 1:
-                return value[i, 0]
-            if value.rows == 1:
-                return value[0, i]
-            raise ValueError("usa dos indices para matrices no vectoriales")
-        return value[i]
+        return _resolve_sequence_index(value, base_name, i)
 
     i = _parse_one_based_index(tokens[0])
     j = _parse_one_based_index(tokens[1])
-    if isinstance(value, sp.MatrixBase):
-        return value[i, j]
-    if isinstance(value, np.ndarray):
-        return value[i, j]
-    return value[i][j]
+    return _resolve_matrix_index(value, base_name, i, j)
 
 # ============================================================
 # === REEMPLAZO AUTOMÃTICO DE VARIABLES ======================
@@ -119,18 +217,20 @@ def _resolve_var_reference(ref, contexto):
 
 def reemplazar_vars(texto, contexto):
     """Reemplaza \var{nombre} con su valor LaTeX en el texto."""
+    contexto = contexto or {}
+
     def repl(m):
         var = m.group(1)
         try:
             resolved = _resolve_var_reference(var, contexto)
         except Exception as e:
-            return f"\\textcolor{{red}}{{Error var {var}: {e}}}"
+            return _latex_message(f"Error var {var}: {e}")
         if resolved is _VAR_NOT_FOUND:
-            return f"\\textcolor{{gray}}{{?{var}?}}"
+            return _latex_message(f"?{var}?", color="gray")
         try:
             return expr_to_latex(resolved)
         except Exception as e:
-            return f"\\textcolor{{red}}{{Error var {var}: {e}}}"
+            return _latex_message(f"Error var {var}: {e}")
 
     return re.sub(r"\\var\{([^{}]+)\}", repl, texto)
 
@@ -155,7 +255,7 @@ def reemplazar_plots(texto, contexto=None):
             candidate_path = Path(ruta)
             if candidate_path.exists():
                 archivo = str(candidate_path)
-                include_target = ruta
+                include_target = candidate_path.as_posix()
                 break
             if output_dir_path is not None and not candidate_path.is_absolute():
                 built_candidate = output_dir_path / candidate_path
@@ -170,7 +270,7 @@ def reemplazar_plots(texto, contexto=None):
                 f"\\includegraphics[{include_opts}]{{{include_target or archivo}}}\n"
                 "\\end{figure}\n"
             )
-        return f"\\textcolor{{red}}{{[No se encontrÃ³ {nombre}]}}"
+        return _latex_message(f"[No se encontro {nombre}]")
 
     return re.sub(r"\\plot(?:\[([^\]]*)\])?\{([a-zA-Z_][a-zA-Z0-9_]*)\}", repl, texto)
 
@@ -187,7 +287,7 @@ def reemplazar_tablas(texto, contexto=None):
             return table_tex
         missing_table = True
         print(f"Warning: table '{table_id}' not found for \\table{{...}}.")
-        return f"\\textcolor{{red}}{{[Table {table_id} not found]}}"
+        return _latex_message(f"[Table {table_id} not found]")
 
     replaced = re.sub(r"\\table\{([^{}]+)\}", repl, texto)
     return replaced, missing_table
@@ -306,6 +406,69 @@ def _extract_latex_error_summary(log_path: Path) -> str | None:
     return None
 
 
+def summarize_latex_build_failure(log_path: str | Path) -> str | None:
+    return _extract_latex_error_summary(Path(log_path))
+
+
+def explain_latex_build_failure(log_path: str | Path, tex_path: str | Path | None = None) -> str | None:
+    summary = summarize_latex_build_failure(log_path)
+    if not summary:
+        return None
+
+    lowered = summary.lower()
+    tex_text = ""
+    if tex_path is not None:
+        try:
+            tex_text = Path(tex_path).read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            tex_text = ""
+
+    if "misplaced alignment tab character &" in lowered:
+        if r"\begin{matrix}" in tex_text:
+            return (
+                r"LaTeX found a matrix environment in the generated document, but the preamble does not include "
+                r"\usepackage{amsmath}. Add that package explicitly to the .mtex document."
+            )
+        if any(token in tex_text for token in (r"\begin{tabular}", r"\begin{array}", r"\begin{align}", r"\begin{aligned}")):
+            return (
+                "LaTeX found an alignment marker '&' outside a valid alignment context. "
+                "Check the surrounding tabular/array/align markup near the reported line."
+            )
+        return (
+            "LaTeX found an '&' alignment marker where plain text or normal math was expected. "
+            "Check the reported line for matrix, table, array, or align syntax."
+        )
+
+    if "undefined control sequence" in lowered:
+        return (
+            "LaTeX tried to use a command that is not defined in the current preamble. "
+            "Check for a misspelled command or a missing package."
+        )
+
+    if "missing $ inserted" in lowered:
+        return (
+            "LaTeX detected content that should probably be inside math mode. "
+            "Check underscores, carets, and formulas near the reported line."
+        )
+
+    return None
+
+
+def _write_compile_log(log_path: Path, compile_log_path: Path, fallback_text: str | None = None) -> None:
+    if log_path.exists():
+        try:
+            shutil.copyfile(log_path, compile_log_path)
+            return
+        except Exception:
+            pass
+    if fallback_text is None:
+        return
+    try:
+        compile_log_path.write_text(fallback_text, encoding="utf-8")
+    except Exception:
+        pass
+
+
 def _run_pdflatex(
     tex_filename: str,
     cwd: str,
@@ -359,6 +522,15 @@ def _delimiter_balance_delta(text: str) -> int:
         elif ch in ")]}":
             delta -= 1
     return delta
+
+
+def _statement_is_comment_only(text: str) -> bool:
+    stripped = text.strip()
+    return stripped.startswith("#") or stripped.startswith("%")
+
+
+def _statement_requests_plot(text: str) -> bool:
+    return bool(re.search(r"(?<![A-Za-z0-9_])(plot|plot3)\s*\(", text))
 
 
 @dataclass(frozen=True)
@@ -467,27 +639,30 @@ def ejecutar_mtex(path, contexto, abrir_pdf=True, build_dir: str | Path | None =
     bloques = CODEBLOCK_SPLIT_RE.split(contenido)
     salida_parts: list[str] = []
     dentro = False
+    compile_log_fallback = None
 
     for bloque in bloques:
         if dentro:
-            try:
-                lineas = split_code_statements(bloque)
-                resultado_final = None
-                plot_generado = False
+            lineas = split_code_statements_with_lines(bloque)
+            resultado_final = None
+            plot_generado = False
 
-                for linea in lineas:
-                    linea = linea.strip()
-                    if not linea:
-                        continue
-                    resultado_final = ejecutar_linea(linea)
-                    if "plot(" in linea or "plot3(" in linea:
+            for statement in lineas:
+                linea = statement.text.strip()
+                if not linea or _statement_is_comment_only(linea):
+                    continue
+                try:
+                    with diagnostic_line_offset(statement.start_line - 1):
+                        resultado = ejecutar_linea(statement.text)
+                    resultado_final = resultado
+                    if _statement_requests_plot(statement.text):
                         plot_generado = True
+                except Exception as e:
+                    diag = runtime_error_from_exception(e, source=statement.text, line=statement.start_line)
+                    salida_parts.append(_latex_message(render_diagnostic(diag)))
 
-                if resultado_final is not None and not plot_generado:
-                    salida_parts.append(expr_to_latex(resultado_final))
-
-            except Exception as e:
-                salida_parts.append(f"\\textcolor{{red}}{{Error: {e}}}")
+            if resultado_final is not None and not plot_generado:
+                salida_parts.append(expr_to_latex(resultado_final))
         else:
             salida_parts.append(bloque)
 
@@ -507,6 +682,12 @@ def ejecutar_mtex(path, contexto, abrir_pdf=True, build_dir: str | Path | None =
     print(f"LaTeX file generated: {tex_path}")
 
     pdf_generado = None
+    previous_pdf_bytes = None
+    if pdf_path.exists():
+        try:
+            previous_pdf_bytes = pdf_path.read_bytes()
+        except Exception:
+            previous_pdf_bytes = None
     try:
         final_run = None
         if likely_multipass:
@@ -549,7 +730,7 @@ def ejecutar_mtex(path, contexto, abrir_pdf=True, build_dir: str | Path | None =
                     output_dir=str(output_dir_path),
                 )
 
-        if final_run is not None and final_run.returncode == 0:
+        if final_run is not None and final_run.returncode == 0 and pdf_path.exists():
             print("PDF compiled successfully.")
             pdf_generado = str(pdf_path)
 
@@ -562,6 +743,11 @@ def ejecutar_mtex(path, contexto, abrir_pdf=True, build_dir: str | Path | None =
                 else:
                     subprocess.run(["xdg-open", str(pdf_path)])
         else:
+            compile_log_fallback = "LaTeX compilation failed.\n"
+            if final_run is None:
+                compile_log_fallback += "The compiler did not produce a result.\n"
+            elif not pdf_path.exists():
+                compile_log_fallback += "The compiler finished without producing a PDF.\n"
             build_diag = make_build_diagnostic(
                 "latex-compilation-failed",
                 "LaTeX compilation failed.",
@@ -569,23 +755,30 @@ def ejecutar_mtex(path, contexto, abrir_pdf=True, build_dir: str | Path | None =
                 hint=f"Check {compile_log_path.name} for the full compiler output.",
             )
             print(render_diagnostic(build_diag))
+            if previous_pdf_bytes is not None:
+                try:
+                    pdf_path.write_bytes(previous_pdf_bytes)
+                except Exception:
+                    pass
 
     except Exception as e:
+        compile_log_fallback = f"Error while compiling PDF: {e}\n"
         build_diag = make_build_diagnostic(
             "latex-compilation-exception",
             f"Error while compiling PDF: {e}",
             hint="Check the compiler installation and project paths.",
         )
         print(render_diagnostic(build_diag))
+        if previous_pdf_bytes is not None:
+            try:
+                pdf_path.write_bytes(previous_pdf_bytes)
+            except Exception:
+                pass
 
     finally:
         set_plot_mode(previous_plot_mode or "interactive")
         set_document_output_dir(previous_plot_output_dir)
-        if log_path.exists():
-            try:
-                shutil.copyfile(log_path, compile_log_path)
-            except Exception:
-                pass
+        _write_compile_log(log_path, compile_log_path, fallback_text=compile_log_fallback)
 
         plot_files = []
         if contexto:

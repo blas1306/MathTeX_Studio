@@ -59,6 +59,22 @@ def _failing_pdflatex(log_text: str):
     return _run
 
 
+def _failing_pdflatex_with_broken_pdf(log_text: str, broken_pdf: bytes = b"broken-pdf"):
+    class _Result:
+        returncode = 1
+
+    def _run(tex_filename: str, cwd: str, draftmode: bool = False, output_dir: str | None = None, synctex: bool = False):
+        del draftmode, synctex
+        target_dir = Path(output_dir or cwd)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        stem = Path(tex_filename).stem
+        (target_dir / f"{stem}.log").write_text(log_text, encoding="utf-8")
+        (target_dir / f"{stem}.pdf").write_bytes(broken_pdf)
+        return _Result()
+
+    return _run
+
+
 @pytest.fixture(autouse=True)
 def _fresh_runtime():
     set_plot_mode("interactive")
@@ -125,7 +141,7 @@ def test_document_execution_does_not_leak_state_between_runs(tmp_path: Path):
     second_tex = (tmp_path / "build_second" / "second.tex").read_text(encoding="utf-8")
 
     assert r"\textcolor{gray}{?a?}" in second_tex
-    assert r"\textcolor{red}{[Table tabla_uno not found]}" in second_tex
+    assert r"\textcolor{red}{[Table tabla\_uno not found]}" in second_tex
     assert r"\begin{tabular}" not in second_tex
     assert not env_ast.get("_table_blocks")
 
@@ -162,6 +178,32 @@ def test_table_placeholder_is_replaced_in_document_and_adds_booktabs_package(tmp
     assert r"\begin{tabular}{cc}" in generated_tex
     assert r"\toprule" in generated_tex
     assert r"\usepackage{booktabs}" in generated_tex
+
+
+def test_matrix_placeholders_do_not_auto_add_amsmath_package(tmp_path: Path):
+    source = _write_mtex(
+        tmp_path,
+        "matrix_doc.mtex",
+        "\\documentclass{article}\n"
+        "\\begin{document}\n"
+        "\\codeblock\n"
+        "A = [1, 2; 3, 4];\n"
+        "b = [5; 6];\n"
+        "x = A | b;\n"
+        "\\endcodeblock\n"
+        "\\var{A}\n"
+        "\\var{b}\n"
+        "\\var{x}\n"
+        "\\end{document}\n",
+    )
+
+    with patch("mtex_executor._run_pdflatex", side_effect=_successful_pdflatex()):
+        ejecutar_mtex(str(source), env_ast, abrir_pdf=False, build_dir=tmp_path / "build")
+
+    generated_tex = (tmp_path / "build" / "matrix_doc.tex").read_text(encoding="utf-8")
+
+    assert r"\begin{matrix}" in generated_tex
+    assert r"\usepackage{amsmath}" not in generated_tex
 
 
 def test_mtex_build_failure_reports_error_cleanly(tmp_path: Path):
@@ -203,6 +245,95 @@ def test_mtex_build_failure_keeps_previous_pdf_if_policy_requires_it(tmp_path: P
 
     assert result is None
     assert previous_pdf.read_bytes() == previous_bytes
+
+
+def test_mtex_build_failure_restores_previous_pdf_if_failed_run_overwrites_it(tmp_path: Path):
+    source = _write_mtex(
+        tmp_path,
+        "restore_pdf.mtex",
+        "\\documentclass{article}\n\\begin{document}\nHola\n\\end{document}\n",
+    )
+    build_dir = tmp_path / "build"
+    build_dir.mkdir()
+    previous_pdf = build_dir / "restore_pdf.pdf"
+    previous_bytes = b"%PDF-1.4\n%stable\n"
+    previous_pdf.write_bytes(previous_bytes)
+
+    with patch(
+        "mtex_executor._run_pdflatex",
+        side_effect=_failing_pdflatex_with_broken_pdf("! Missing $ inserted.\n", broken_pdf=b"%PDF-1.4\n%broken\n"),
+    ):
+        result = ejecutar_mtex(str(source), env_ast, abrir_pdf=False, build_dir=build_dir)
+
+    assert result is None
+    assert previous_pdf.read_bytes() == previous_bytes
+
+
+def test_document_execution_continues_after_runtime_error_in_one_statement(tmp_path: Path):
+    source = _write_mtex(
+        tmp_path,
+        "recover_doc.mtex",
+        "\\documentclass{article}\n"
+        "\\begin{document}\n"
+        "\\codeblock\n"
+        "a = 1;\n"
+        "bad = foo + 1;\n"
+        "b = a + 1;\n"
+        "\\endcodeblock\n"
+        "A=\\var{a}\n"
+        "B=\\var{b}\n"
+        "\\end{document}\n",
+    )
+
+    output = io.StringIO()
+    with patch("mtex_executor._run_pdflatex", side_effect=_successful_pdflatex()), redirect_stdout(output):
+        ejecutar_mtex(str(source), env_ast, abrir_pdf=False, build_dir=tmp_path / "build")
+
+    generated_tex = (tmp_path / "build" / "recover_doc.tex").read_text(encoding="utf-8")
+
+    assert "Variable foo is not defined." in output.getvalue()
+    assert "A=1" in generated_tex
+    assert "B=2" in generated_tex
+
+
+def test_empty_and_comment_only_code_blocks_do_not_emit_runtime_errors(tmp_path: Path):
+    source = _write_mtex(
+        tmp_path,
+        "comments_only.mtex",
+        "\\documentclass{article}\n"
+        "\\begin{document}\n"
+        "\\codeblock\n"
+        "\n"
+        "% comentario\n"
+        "# another comment\n"
+        "\\endcodeblock\n"
+        "Texto estable\n"
+        "\\end{document}\n",
+    )
+
+    with patch("mtex_executor._run_pdflatex", side_effect=_successful_pdflatex()):
+        ejecutar_mtex(str(source), env_ast, abrir_pdf=False, build_dir=tmp_path / "build")
+
+    generated_tex = (tmp_path / "build" / "comments_only.tex").read_text(encoding="utf-8")
+
+    assert "Texto estable" in generated_tex
+    assert "Runtime error" not in generated_tex
+
+
+def test_compile_exception_still_writes_compile_log(tmp_path: Path):
+    source = _write_mtex(
+        tmp_path,
+        "missing_pdflatex.mtex",
+        "\\documentclass{article}\n\\begin{document}\nHola\n\\end{document}\n",
+    )
+    build_dir = tmp_path / "build"
+
+    with patch("mtex_executor._run_pdflatex", side_effect=FileNotFoundError("pdflatex not found")):
+        result = ejecutar_mtex(str(source), env_ast, abrir_pdf=False, build_dir=build_dir)
+
+    assert result is None
+    compile_log = (build_dir / "compile.log").read_text(encoding="utf-8")
+    assert "pdflatex not found" in compile_log
 
 
 def test_document_execution_restores_previous_plot_mode(tmp_path: Path):
