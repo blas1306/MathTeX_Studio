@@ -1,66 +1,52 @@
 # MathTeX
 
-MathTeX es un entorno para calculo simbolico/numerico con una sintaxis inspirada en Octave/MATLAB y soporte para documentos LaTeX ejecutables. El proyecto permite trabajar de dos formas:
+MathTeX is a computational environment for writing technical documents with executable math.
 
-- Scripts `.mtx` para calculo interactivo, funciones, matrices y graficos.
-- Documentos `.mtex` para mezclar LaTeX con bloques de codigo MathTeX y generar `.tex` + `.pdf`.
+It combines numerical and symbolic computation with LaTeX so you can calculate values, generate plots and tables, and inject the results directly into the final PDF.
 
-La aplicacion usa una unica interfaz grafica basada en PySide6. Si la GUI no puede abrirse, queda disponible una consola tipo REPL.
+In short:
 
-## Caracteristicas principales
+> LaTeX + computation that updates itself
 
-- Editor interactivo para archivos `.mtx`.
-- Espacio de trabajo `.mtex` con vista previa PDF.
-- Compilacion de proyectos a una carpeta `build/`.
-- Graficos 2D integrados y reutilizables dentro del documento con `\plot{...}`.
-- Insercion de variables calculadas dentro de LaTeX con `\var{...}`.
-- Generacion de tablas LaTeX con `table(...)` y uso posterior con `\table{...}`.
-- Soporte para algebra lineal, derivadas, sistemas lineales, SVD, LU, Newton-Raphson, min/max, normas y operaciones elemento a elemento.
+## Overview
 
-## Requisitos
+In a traditional workflow, computations, plots, tables, and writing often live in separate tools. MathTeX brings those steps together in one place.
 
-- Python 3
-- Dependencias de `requirements.txt`
-- `pdflatex` instalado y disponible en `PATH` para generar PDF
-- PySide6 con soporte para `QtPdf`/`QtPdfWidgets` en la instalacion activa
+With MathTeX, you can:
 
-En Windows normalmente esto se resuelve instalando MiKTeX. En Linux/macOS puedes usar TeX Live o una distribucion equivalente.
+- write calculation scripts in `.mtx` files
+- create executable LaTeX documents in `.mtex`
+- insert computed values with `\var{...}`
+- insert generated plots with `\plot{...}`
+- insert generated tables with `\table{...}`
+- compile the final document to PDF
 
-## Instalacion
+## Core Concepts
 
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
+### `.mtx` scripts
 
-Si ya tienes un entorno virtual activo, basta con instalar las dependencias.
+Use `.mtx` files for calculation, experimentation, reusable functions, and plotting.
 
-## Ejecucion
+Typical use cases:
 
-```powershell
-python src/main.py
-```
+- quick numeric experiments
+- function definitions
+- linear algebra
+- symbolic differentiation and solving
+- reusable helper scripts
 
-Opciones utiles:
+### `.mtex` documents
 
-- `python src/main.py --cli`: fuerza el modo consola.
+Use `.mtex` files when you want a LaTeX document that executes code blocks and embeds the results into the document output.
 
-## Flujo rapido
+This is the format intended for:
 
-### 1. Scripts `.mtx`
+- reports
+- assignments
+- technical notes
+- documents with computed values, plots, and tables
 
-Usa el editor interactivo para probar calculos, funciones y graficos.
-
-```text
-f(x) = x.^2 - 2;
-x = \NR(f, 1, 1e-8);
-\plot(f, -1, 3, name = "raiz");
-```
-
-### 2. Documentos `.mtex`
-
-Un archivo `.mtex` es un documento LaTeX con bloques de codigo MathTeX.
+## Example
 
 ```latex
 \documentclass{article}
@@ -72,51 +58,166 @@ b = [5; 6];
 x = A | b;
 \end{code}
 
-La solucion es $\var{x}$.
+The solution is:
+
+\[
+x = \var{x}
+\]
 
 \end{document}
 ```
 
-Al compilar, MathTeX ejecuta el bloque, reemplaza placeholders y genera los artefactos de salida.
+MathTeX will:
 
-## Estructura del repositorio
+1. execute the code block
+2. replace `\var{x}` with the computed result
+3. generate an intermediate `.tex` file
+4. compile the final PDF
 
-- `src/`: codigo fuente Python del proyecto.
-- `src/main.py`: punto de entrada principal para GUI PySide6 o modo CLI.
-- `src/qt_app.py`: interfaz Qt principal.
-- `src/latex_lang.py`: nucleo del lenguaje MathTeX.
-- `src/mtex_executor.py`: ejecucion de `.mtex` y compilacion a LaTeX/PDF.
-- `src/project_system.py`: proyectos, metadata `.mtexproj` y recientes.
-- `src/project_outputs.py`: manejo de artefactos de compilacion.
-- `src/parsers/`: extensiones del lenguaje.
-- `ejemplos/`: scripts y documentos de ejemplo.
-- `docs/`: documentacion complementaria.
-- `tests/`: pruebas automatizadas.
+## Plot Example
 
-## Archivos y carpetas generadas
+```text
+f(x) = x.^2 - 2;
+\plot(f, -1, 3, name = "graph");
+```
 
-- `.mtexproj`: metadata del proyecto.
-- `build/`: salida de compilacion de documentos.
-- `build/<nombre>.tex`: LaTeX final generado por MathTeX.
-- `build/<nombre>.pdf`: PDF compilado.
-- `build/compile.log`: log consolidado de compilacion.
+```latex
+\plot{graph}
+```
 
-## Documentacion adicional
+## Features
 
-- `docs/guia_de_uso.md`: flujo de trabajo recomendado y sintaxis mas usada.
-- `docs/operadores_elemento_a_elemento.md`: uso de `.*`, `./`, `.^`, `.+` y `.-`.
+- interactive scripting with `.mtx` files
+- executable LaTeX documents with `.mtex`
+- automatic PDF generation through `pdflatex`
+- inline value injection with `\var{...}`
+- named plot generation and insertion with `\plot{...}`
+- named table generation and insertion with `\table{...}`
+- matrix and element-wise operations
+- linear algebra tools such as LU, SVD, and linear system solving
+- calculus and symbolic utilities such as derivatives and solving
+- numerical methods including Newton-Raphson style workflows
+- PySide6 desktop interface with CLI fallback
 
-## Ejemplos incluidos
+## Requirements
 
-En `ejemplos/` hay scripts y documentos para:
+- Python 3
+- dependencies from `requirements.txt`
+- `pdflatex` available in `PATH`
+- PySide6 with QtPdf support for the GUI preview
 
-- Newton-Raphson
-- minimos cuadrados
-- graficos 2D
-- funciones propias e imports desde `.mtx`
-- tablas para documentos
-- ejemplos documentales con sus `.tex` y `.pdf`
+Recommended LaTeX distributions:
 
-## Nota practica
+- Windows: MiKTeX
+- Linux/macOS: TeX Live
 
-Si la compilacion falla, revisa primero `build/compile.log`. Si la app abre pero no muestra la vista previa, verifica que `pdflatex` este disponible y que la instalacion de PySide6 incluya `QtPdf`.
+## Installation
+
+```bash
+python -m venv .venv
+
+# Linux/macOS
+source .venv/bin/activate
+
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+
+python -m pip install -r requirements.txt
+```
+
+## Running
+
+Start the desktop application:
+
+```bash
+python src/main.py
+```
+
+Force CLI mode:
+
+```bash
+python src/main.py --cli
+```
+
+Current behavior:
+
+- `python src/main.py` tries to launch the PySide6 GUI
+- if the GUI cannot start, MathTeX falls back to CLI mode
+- `python src/main.py --cli` always starts the text interface
+
+## Build Output
+
+When compiling a `.mtex` document, MathTeX writes build artifacts to `build/`.
+
+Typical outputs:
+
+- `build/<name>.tex`
+- `build/<name>.pdf`
+- `build/compile.log`
+
+If compilation fails, `build/compile.log` is the first place to check.
+
+## Project Structure
+
+```text
+src/        Core application code
+tests/      Automated tests
+docs/       User documentation
+ejemplos/   Example scripts and documents
+```
+
+Notable files:
+
+- `src/main.py`: application entry point
+- `src/latex_lang.py`: language runtime
+- `src/mtex_executor.py`: `.mtex` execution and build pipeline
+- `src/qt_app.py`: PySide6 GUI
+
+## Documentation and Examples
+
+User documentation:
+
+- `docs/guia_de_uso.md`
+- `docs/operadores_elemento_a_elemento.md`
+
+Examples:
+
+- `ejemplos/README.md`
+- `ejemplos/documentos/`
+- `ejemplos/scripts_raiz/`
+
+## Notes
+
+- If PDF compilation fails, verify that `pdflatex` is installed and available in `PATH`.
+- If preview does not work, verify that PySide6 includes QtPdf support.
+- Placeholders such as `\var{A[2,1]}` use 1-based indexing.
+
+## Philosophy
+
+MathTeX is not trying to replace MATLAB, Wolfram, or Jupyter.
+
+Its focus is narrower and more document-oriented:
+
+> simplify the workflow of writing technical documents with embedded computation
+
+## Project Status
+
+MathTeX is under active development.
+
+The `.mtex` document pipeline is already usable and continues to improve, while the application and user experience are still evolving.
+
+## AI Assistance Disclaimer
+
+This project has been developed with significant assistance from AI tools.
+
+As the author, I do not yet have the full level of expertise required to build a system of this complexity entirely on my own. However, this project is also part of my learning process.
+
+My goal is to progressively deepen my understanding of the underlying concepts and reduce reliance on AI over time, eventually being able to continue developing and maintaining MathTeX more independently.
+
+## Contributing
+
+Contributions are welcome. Contribution guidelines are not yet formalized.
+
+## License
+
+To be defined.
