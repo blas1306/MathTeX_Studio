@@ -6,3 +6,4 @@ matplotlib==3.10.8
 
 # Qt GUI stack
 PySide6==6.10.2
+platformdirs==4.4.0

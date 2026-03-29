@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
+
+from platformdirs import user_data_dir
 
 from project_outputs import ProjectOutputManager
 
 PROJECT_METADATA_FILENAME = ".mtexproj"
 DEFAULT_MAIN_FILE = "main.mtex"
 PROJECT_VERSION = 1
+APP_STORAGE_NAME = "MTeX Studio"
 
 
 def _now_iso() -> str:
@@ -27,11 +29,7 @@ def _path_key(path: str | Path) -> str:
 
 
 def default_registry_path() -> Path:
-    local_app_data = os.environ.get("LOCALAPPDATA")
-    if local_app_data:
-        base_dir = Path(local_app_data) / "MTeX Studio"
-    else:
-        base_dir = Path.home() / ".mtex_studio"
+    base_dir = Path(user_data_dir(appname=APP_STORAGE_NAME, appauthor=False))
     return base_dir / "recent_projects.json"
 
 

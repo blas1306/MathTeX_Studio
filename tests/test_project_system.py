@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from uuid import uuid4
 
+import project_system
 from project_outputs import BUILD_DIRNAME
 from project_system import DEFAULT_MAIN_FILE, ProjectManager, ProjectRegistry
 
@@ -137,6 +138,23 @@ class ProjectRegistryTests(unittest.TestCase):
         self.registry.remove_missing_projects()
 
         self.assertEqual([project.name for project in self.registry.list_projects()], ["KeepMe"])
+
+
+def test_default_registry_path_uses_platformdirs(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_user_data_dir(*args, **kwargs) -> str:
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return str(tmp_path / "data-home")
+
+    monkeypatch.setattr(project_system, "user_data_dir", fake_user_data_dir)
+
+    path = project_system.default_registry_path()
+
+    assert path == tmp_path / "data-home" / "recent_projects.json"
+    assert captured["args"] == ()
+    assert captured["kwargs"] == {"appname": "MTeX Studio", "appauthor": False}
 
 
 if __name__ == "__main__":

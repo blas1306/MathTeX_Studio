@@ -1,21 +1,19 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
+
+from platformdirs import user_config_dir
 
 
 APP_PREFERENCES_FILENAME = "ui_preferences.json"
 APP_PREFERENCES_VERSION = 1
+APP_STORAGE_NAME = "MTeX Studio"
 
 
 def default_preferences_path() -> Path:
-    local_app_data = os.environ.get("LOCALAPPDATA")
-    if local_app_data:
-        base_dir = Path(local_app_data) / "MTeX Studio"
-    else:
-        base_dir = Path.home() / ".mtex_studio"
+    base_dir = Path(user_config_dir(appname=APP_STORAGE_NAME, appauthor=False))
     return base_dir / APP_PREFERENCES_FILENAME
 
 
