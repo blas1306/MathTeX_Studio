@@ -220,4 +220,8 @@ Contributions are welcome. Contribution guidelines are not yet formalized.
 
 ## License
 
-To be defined.
+This project is licensed under the GNU General Public License v3.0 (GPL-3.0).
+
+This means:
+- You are free to use, modify, and distribute the software
+- Any distributed modifications must also be open source under the same license
