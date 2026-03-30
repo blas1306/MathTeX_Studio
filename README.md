@@ -173,18 +173,18 @@ Notable files:
 - `src/mtex_executor.py`: `.mtex` execution and build pipeline
 - `src/qt_app.py`: PySide6 GUI
 
-## Documentation and Examples
+## Documentation
 
 User documentation:
 
 - `docs/guia_de_uso.md`
 - `docs/operadores_elemento_a_elemento.md`
 
-Examples:
+## Example Demos
 
-- `ejemplos/README.md`
-- `ejemplos/documentos/`
-- `ejemplos/scripts_raiz/`
+- **Physics Lab Report**: experimental data, computed values, and an automatically generated plot
+- **Linear Algebra Report**: solving a linear system and embedding matrix factorizations into a document
+- **Newton Method Demo**: numerical root-finding with generated output and plot
 
 ## Notes
 

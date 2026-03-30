@@ -4159,12 +4159,31 @@ def plot3(f_expr, x_sym, y_sym, a, b, c, d, n=100):
 
 def NR(F_sym, x0: float, tol: float = 1e-8, max_iter: int = 1000) -> float | None:
     global env_ast
+    def _coerce_float(value: Any, label: str) -> float:
+        coerced = _mt_coerce_near_real(value)
+        if isinstance(coerced, complex):
+            raise ValueError(f"{label} must be real.")
+        try:
+            return float(coerced)
+        except Exception:
+            try:
+                return float(sp.N(coerced))
+            except Exception as exc:
+                raise ValueError(f"Invalid {label}: {exc}") from exc
+
+    try:
+        x0_num = _coerce_float(x0, "initial guess")
+        tol_num = _coerce_float(tol, "tolerance")
+    except Exception as exc:
+        print(f"Did not converge: {exc}")
+        return None
+
     x_symbol = symbols("x")
     F_l = lambdify(x_symbol, F_sym, "numpy")
     dF_l = lambdify(x_symbol, diff(F_sym, x_symbol), "numpy")
     env_ast.setdefault("nr_roots", [])
     try:
-        root = scipy_newton(F_l, x0, fprime=dF_l, tol=tol, maxiter=max_iter)
+        root = scipy_newton(F_l, x0_num, fprime=dF_l, tol=tol_num, maxiter=max_iter)
     except RuntimeError:
         print("Did not converge.")
         return None
