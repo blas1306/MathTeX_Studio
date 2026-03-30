@@ -90,6 +90,7 @@ FUNCTION_PATTERN = re.compile(r"\\[A-Za-z][A-Za-z0-9_]*")
 FROM_IMPORT_PATTERN = re.compile(
     r"\bfrom\b\s+(?P<module>[A-Za-z_][\w]*)\s+(?:\bimport\b(?:\s+(?P<names>[A-Za-z0-9_,\s]*))?)?"
 )
+CODE_BLOCK_MARKER_PATTERN = re.compile(r"\\begin\{code\}|\\end\{code\}|\\codeblock|\\endcodeblock")
 
 QT_AVAILABLE = True
 AUTO_COMPILE_DEBOUNCE_MS = 900
@@ -99,9 +100,13 @@ SNIPPET_CURSOR_MARKER = "<|cursor|>"
 
 
 class MathSyntaxHighlighter(QtGui.QSyntaxHighlighter):  # type: ignore[misc]
+    _STATE_TEXT = 0
+    _STATE_CODE = 1
+
     def __init__(self, document):
         super().__init__(document)
         assert QtGui is not None
+        self._document_kind = "script"
         self._formats = {
             "keyword": self._make_format(QtGui.QColor("#a30101")),
             "comment": self._make_format(QtGui.QColor("#00aa00")),
@@ -119,11 +124,46 @@ class MathSyntaxHighlighter(QtGui.QSyntaxHighlighter):  # type: ignore[misc]
         fmt.setForeground(color)
         return fmt
 
+    def set_document_kind(self, document_kind: str) -> None:
+        normalized = "mtex_document" if document_kind == "mtex_document" else "script"
+        if self._document_kind == normalized:
+            return
+        self._document_kind = normalized
+        self.rehighlight()
+
+    def _keyword_spans(self, text: str) -> list[tuple[int, int]]:
+        if self._document_kind != "mtex_document":
+            self.setCurrentBlockState(self._STATE_TEXT)
+            return [(0, len(text))]
+
+        spans: list[tuple[int, int]] = []
+        in_code = self.previousBlockState() == self._STATE_CODE
+        segment_start = 0
+
+        for match in CODE_BLOCK_MARKER_PATTERN.finditer(text):
+            marker = match.group(0)
+            opens_code = marker in {r"\begin{code}", r"\codeblock"}
+            if in_code and match.start() > segment_start:
+                spans.append((segment_start, match.start()))
+            if opens_code:
+                in_code = True
+                segment_start = match.end()
+            else:
+                in_code = False
+                segment_start = match.end()
+
+        if in_code and segment_start < len(text):
+            spans.append((segment_start, len(text)))
+
+        self.setCurrentBlockState(self._STATE_CODE if in_code else self._STATE_TEXT)
+        return spans
+
     def highlightBlock(self, text: str) -> None:  # noqa: N802 - API Qt
         for match in STRING_PATTERN.finditer(text):
             self.setFormat(match.start(), match.end() - match.start(), self._formats["string"])
         for match in COMMENT_PATTERN.finditer(text):
             self.setFormat(match.start(), match.end() - match.start(), self._formats["comment"])
+        keyword_spans = self._keyword_spans(text)
         skip = []
         for match in STRING_PATTERN.finditer(text):
             skip.append((match.start(), match.end()))
@@ -133,12 +173,15 @@ class MathSyntaxHighlighter(QtGui.QSyntaxHighlighter):  # type: ignore[misc]
         def _skipped(pos: int) -> bool:
             return any(a <= pos < b for a, b in skip)
 
+        def _in_keyword_span(pos: int) -> bool:
+            return any(start <= pos < end for start, end in keyword_spans)
+
         for match in KEYWORD_PATTERN.finditer(text):
-            if _skipped(match.start()):
+            if _skipped(match.start()) or not _in_keyword_span(match.start()):
                 continue
             self.setFormat(match.start(), match.end() - match.start(), self._formats["keyword"])
         for match in FROM_IMPORT_PATTERN.finditer(text):
-            if _skipped(match.start()):
+            if _skipped(match.start()) or not _in_keyword_span(match.start()):
                 continue
             from_start = match.start()
             self.setFormat(from_start, 4, self._formats["import_kw"])
@@ -172,7 +215,7 @@ class MathSyntaxHighlighter(QtGui.QSyntaxHighlighter):  # type: ignore[misc]
                 continue
             self.setFormat(match.start(), match.end() - match.start(), self._formats["punct"])
         for match in LOGICAL_OPERATOR_PATTERN.finditer(text):
-            if _skipped(match.start()):
+            if _skipped(match.start()) or not _in_keyword_span(match.start()):
                 continue
             self.setFormat(match.start(), match.end() - match.start(), self._formats["keyword"])
 
@@ -668,6 +711,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
 
     def set_autocomplete_document_kind(self, document_kind: str) -> None:
         self._autocomplete_document_kind = document_kind
+        self.highlighter.set_document_kind(document_kind)
 
     def set_autocomplete_workspace_provider(
         self,
@@ -1585,6 +1629,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self.auto_compile_checkbox = self.project_workspace_widget.auto_compile_checkbox
         self.build_status_label = self.project_workspace_widget.build_status_label
         self.preview = self.project_workspace_widget.preview_widget
+        self.mtex_editor.set_autocomplete_document_kind("mtex_document")
 
         self.project_home_widget.new_project_requested.connect(self._create_project)
         self.project_home_widget.open_project_requested.connect(self._choose_and_open_project)
