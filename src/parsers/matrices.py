@@ -8,6 +8,7 @@ from scipy import linalg as scipy_linalg
 import sympy as sp
 from sympy import Matrix, MatrixBase, Rational, Expr, default_sort_key
 
+from numeric_format import format_value_for_display, try_format_numeric_scalar
 from .context import ParserContext
 
 MULTI_OUTPUT_COMMANDS = {r"\LU", r"\LDU", r"\Spec", r"\Eig", r"\Schur", r"\QR", r"\QR1", r"\SVD", r"\sort", r"\size"}
@@ -112,7 +113,7 @@ def pretty_span(vectors: List[List[Any]]) -> str:
     """Muestra vectores en formato span{(a,b); (c,d)}."""
     if not vectors:
         return "{0}"
-    formatted = ["(" + ", ".join(str(val) for val in v) + ")" for v in vectors]
+    formatted = ["(" + ", ".join(format_value_for_display(val) for val in v) + ")" for v in vectors]
     return "span{" + "; ".join(formatted) + "}"
 
 
@@ -284,59 +285,12 @@ def _replace_user_function_calls(expr_py: str, env: dict[str, Any]) -> str:
 
 def matrix_to_str(M, greek_display=None, decimals: int = 6) -> str:
     """Representacion tipo Octave/MATLAB para matrices."""
+    del decimals
     if greek_display is None:
         greek_display = {}
     if not isinstance(M, MatrixBase):
-        return str(M)
-
-    def _to_numeric(val):
-        try:
-            return complex(val.evalf())
-        except Exception:
-            return None
-
-    def _is_int(num: complex) -> bool:
-        return abs(num.imag) < 1e-10 and abs(num.real - round(num.real)) < 1e-10
-
-    def _format_num(num: complex, force_int: bool) -> str:
-        if force_int and _is_int(num):
-            return str(int(round(num.real)))
-        if abs(num.imag) < 1e-10:
-            real = num.real
-            if abs(real) < 1e-12:
-                return "0"
-            if _is_int(num):
-                return str(int(round(real)))
-            return f"{real:.{decimals}f}".rstrip("0").rstrip(".")
-
-        real_part_num = complex(num.real, 0)
-        if abs(real_part_num.real) < 1e-12:
-            real_part = "0"
-        elif _is_int(real_part_num):
-            real_part = str(int(round(real_part_num.real)))
-        else:
-            real_part = f"{real_part_num.real:.{decimals}f}".rstrip("0").rstrip(".")
-
-        imag_abs = abs(num.imag)
-        if imag_abs < 1e-12:
-            imag_str = "0"
-        elif abs(imag_abs - round(imag_abs)) < 1e-10:
-            imag_str = str(int(round(imag_abs)))
-        else:
-            imag_str = f"{imag_abs:.{decimals}f}".rstrip("0").rstrip(".")
-
-        sign = "+" if num.imag >= 0 else "-"
-        return f"{real_part}{sign}{imag_str}i"
-
-    numeric_map: dict[tuple[int, int], complex | None] = {}
-    all_int = True
+        return format_value_for_display(M)
     rows_list = M.tolist()
-    for r, row in enumerate(rows_list):
-        for c, val in enumerate(row):
-            num = _to_numeric(val)
-            numeric_map[(r, c)] = num
-            if num is None or not _is_int(num):
-                all_int = False
 
     formatted_rows: list[list[str]] = []
     col_widths = [0] * M.cols
@@ -344,13 +298,13 @@ def matrix_to_str(M, greek_display=None, decimals: int = 6) -> str:
     for r, row in enumerate(rows_list):
         formatted_row: list[str] = []
         for c, val in enumerate(row):
-            num = numeric_map[(r, c)]
-            if num is None:
+            formatted = try_format_numeric_scalar(val)
+            if formatted is None:
                 s = str(val)
                 for name, symbol in greek_display.items():
                     s = re.sub(rf"\b{name}\b", symbol, s)
             else:
-                s = _format_num(num, all_int)
+                s = formatted
             formatted_row.append(s)
             col_widths[c] = max(col_widths[c], len(s))
         formatted_rows.append(formatted_row)
@@ -1042,10 +996,10 @@ def _handle_matrix_expression(linea: str, ctx: ParserContext) -> bool:
                 print(matrix_to_str(res, ctx.greek_display))
             return True
         if isinstance(res, (int, float, Rational)):
-            print(res)
+            print(format_value_for_display(res))
             return True
         if res is not None:
-            print(res)
+            print(format_value_for_display(res))
             return True
     except NameError:
         return False
@@ -1270,7 +1224,7 @@ def handle_matrices(linea: str, ctx: ParserContext, allow_expression_eval: bool 
             if mat.rows != mat.cols:
                 print(f"Error: {name} is not square.")
             else:
-                print(f"det({name}) = {mat.det()}")
+                print(f"det({name}) = {format_value_for_display(mat.det())}")
         except Exception as e:
             print(f"Error while computing the determinant: {e}")
         return True
@@ -1316,7 +1270,7 @@ def handle_matrices(linea: str, ctx: ParserContext, allow_expression_eval: bool 
             print(f"{name} is not a defined matrix ({exc}).")
             return True
         try:
-            print(f"rg({name}) = {mat.rank()}")
+            print(f"rg({name}) = {format_value_for_display(mat.rank())}")
         except Exception as e:
             print(f"Error while computing the rank of {name}: {e}")
         return True
@@ -1330,7 +1284,7 @@ def handle_matrices(linea: str, ctx: ParserContext, allow_expression_eval: bool 
             print(f"{name} is not a defined matrix ({exc}).")
             return True
         try:
-            print(f"tr({name}) = {mat.trace()}")
+            print(f"tr({name}) = {format_value_for_display(mat.trace())}")
         except Exception as e:
             print(f"Error while computing the trace of {name}: {e}")
         return True
@@ -1356,7 +1310,7 @@ def handle_matrices(linea: str, ctx: ParserContext, allow_expression_eval: bool 
         except Exception as exc:
             print(f"{name} is not a defined matrix ({exc}).")
             return True
-        print(f"rows({name}) = {mat.rows}")
+        print(f"rows({name}) = {format_value_for_display(mat.rows)}")
         return True
 
     # Numero de columnas
@@ -1367,7 +1321,7 @@ def handle_matrices(linea: str, ctx: ParserContext, allow_expression_eval: bool 
         except Exception as exc:
             print(f"{name} is not a defined matrix ({exc}).")
             return True
-        print(f"columns({name}) = {mat.cols}")
+        print(f"columns({name}) = {format_value_for_display(mat.cols)}")
         return True
 
     if linea_stripped.startswith(r"\size(") and linea_stripped.endswith(")"):
@@ -1387,7 +1341,7 @@ def handle_matrices(linea: str, ctx: ParserContext, allow_expression_eval: bool 
             r"\size",
         )
         if names_used is not None:
-            assigned_pairs = ", ".join(f"{_format_var(n)}={v}" for n, v in zip(names_used, values))
+            assigned_pairs = ", ".join(f"{_format_var(n)}={format_value_for_display(v)}" for n, v in zip(names_used, values))
             print(f"size({name}) -> {assigned_pairs}")
         return True
 

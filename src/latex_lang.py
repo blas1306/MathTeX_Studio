@@ -125,6 +125,7 @@ from parser_indices import (
 from parser_symbols import build_parser_base_symbols, build_parser_symbol_registry
 from runtime_symbols import build_runtime_shared_symbols, register_shared_symbols
 from parser_statements import parse_mathtex_line as _parse_mathtex_line_impl
+from numeric_format import format_value_for_display, reset_numeric_format, set_numeric_format
 
 try:
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
@@ -510,7 +511,7 @@ def _workspace_value_summary(name: str, val: Any, max_len: int = 80) -> str:
     elif isinstance(val, np.ndarray):
         summary = f"ndarray shape {val.shape}"
     else:
-        summary = str(val)
+        summary = format_value_for_display(val)
     summary = re.sub(r"\s+", " ", summary).strip()
     return _truncate_text(summary, max_len=max_len)
 
@@ -2094,10 +2095,10 @@ def _print_expr_result(value: Any, expr_source: str, ctx: ParserContext) -> None
             print(matrix_to_str(value, ctx.greek_display))
         return
     if isinstance(value, (int, float, complex, sp.Number)):
-        print(value)
+        print(format_value_for_display(value))
         return
     if value is not None:
-        print(value)
+        print(format_value_for_display(value))
 
 
 def _eval_ast_expr_node(node: ASTNode, scope: dict[str, Any]) -> Any:
@@ -2145,7 +2146,7 @@ def _execute_ast_node(node: ASTNode, ctx: ParserContext, raw_original: str) -> b
             if isinstance(val, MatrixBase):
                 print(f"{display_name} = {matrix_to_str(val, ctx.greek_display)}")
             else:
-                print(f"{display_name} = {val}")
+                print(f"{display_name} = {format_value_for_display(val)}")
         return True
 
     if isinstance(node, IndexAssignNode):
@@ -3061,6 +3062,18 @@ def _execute_line_core(linea: str) -> None:
         _print_workspace_who(env_ast)
         return
 
+    m_format = re.match(r"^\\format\(([^()]*)\)\s*$", stripped_raw, re.IGNORECASE)
+    if m_format:
+        raw_mode = m_format.group(1).strip()
+        if not raw_mode:
+            print(r"Usage: \format(short|long|shorte|longe|bank)")
+            return
+        try:
+            set_numeric_format(raw_mode)
+        except ValueError as exc:
+            print(exc)
+        return
+
     if stripped_raw == r"\whos":
         _print_workspace_whos(env_ast)
         return
@@ -3352,7 +3365,7 @@ def _execute_line_core(linea: str) -> None:
                 if isinstance(current, Matrix):
                     print(f"{display_name} = {matrix_to_str(current, greek_display)}")
                 else:
-                    print(f"{display_name} = {current}")
+                    print(f"{display_name} = {format_value_for_display(current)}")
             return
 
         name_clean = _normalize_name(name)
@@ -3369,7 +3382,7 @@ def _execute_line_core(linea: str) -> None:
         if isinstance(val, Matrix):
             print(f"{display_name} = {matrix_to_str(val, greek_display)}")
         else:
-            print(f"{display_name} = {val}")
+            print(f"{display_name} = {format_value_for_display(val)}")
         return
 
     if fatal_parse_error is not None:
@@ -3942,6 +3955,7 @@ def reset_environment(env: dict | None = None) -> None:
     env_lambdified.clear()
     user_norms.clear()
     user_inners.clear()
+    reset_numeric_format()
     reset_plot_state(target)
 
     _OCT_BLOCK_ACTIVE = False

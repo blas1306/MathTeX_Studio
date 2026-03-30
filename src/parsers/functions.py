@@ -6,6 +6,7 @@ from typing import Any, List
 from sympy import diff, symbols, sympify, Expr
 from sympy.matrices import MatrixBase
 
+from numeric_format import format_value_for_display, set_numeric_format
 from .context import ParserContext
 from .matrices import matrix_to_str
 
@@ -264,7 +265,7 @@ def handle_functions(linea: str, ctx: ParserContext) -> bool:
         def _fmt(val: Any) -> str:
             if isinstance(val, MatrixBase):
                 return matrix_to_str(val, greek_display)
-            return str(val)
+            return format_value_for_display(val)
 
         if isinstance(values[0], str) and len(values) > 1:
             fmt = values[0]
@@ -279,6 +280,18 @@ def handle_functions(linea: str, ctx: ParserContext) -> bool:
         return True
 
     # Definición de funciones
+    m_format = re.match(r"^\\format\(([^()]*)\)\s*$", linea, re.IGNORECASE)
+    if m_format:
+        raw_mode = m_format.group(1).strip()
+        if not raw_mode:
+            print(r"Usage: \format(short|long|shorte|longe|bank)")
+            return True
+        try:
+            set_numeric_format(raw_mode)
+        except ValueError as exc:
+            print(exc)
+        return True
+
     def _expand_derivatives(expr: str) -> str:
         def repl(match: re.Match[str]) -> str:
             fname = match.group(1)
@@ -586,7 +599,7 @@ def handle_functions(linea: str, ctx: ParserContext) -> bool:
             val_expr = eval(val_str, ctx.eval_context())
             deriv_sym = diff(env_ast[fname])
             res = deriv_sym.subs(x_sym, val_expr)
-            print(f"{fname}'({val_str}) = {res}")
+            print(f"{fname}'({val_str}) = {format_value_for_display(res)}")
         except Exception as e:
             print(f"Error while evaluating the derivative of {fname} at {val_str}: {e}")
         return True
@@ -633,7 +646,7 @@ def handle_functions(linea: str, ctx: ParserContext) -> bool:
         try:
             deriv_sym = diff(f_expr, *deriv_args)
             printed_vars = ", ".join(raw_vars) if raw_vars else "x"
-            print(f"diff({fname}, {printed_vars}) = {deriv_sym}")
+            print(f"diff({fname}, {printed_vars}) = {format_value_for_display(deriv_sym)}")
         except Exception as e:
             print(f"Error al derivar {fname}: {e}")
         return True
@@ -694,7 +707,7 @@ def handle_functions(linea: str, ctx: ParserContext) -> bool:
             s = str(res)
             for g, symb in greek_display.items():
                 s = re.sub(rf"\b{g}\b", symb, s)
-            print(f"{fname}({', '.join(args)}) = {s}")
+            print(f"{fname}({', '.join(args)}) = {format_value_for_display(s)}")
         except Exception as e:
             print(f"Error while evaluating {fname}({args_str}): {e}")
         return True

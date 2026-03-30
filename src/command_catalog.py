@@ -87,6 +87,7 @@ BASE_ENTRIES: tuple[CommandSuggestion, ...] = (
     _entry(r"\exp()", "Exponential function.", "functions"),
     _entry(r"\figure()", "Create or select a figure.", "plotting"),
     _entry(r"\floor()", "Floor function.", "functions"),
+    _entry(r"\format()", "Set the global numeric display format.", "workspace"),
     _entry(r"\frac{}", "Fraction template.", "functions", insert_text=r"\frac{}{}", signature=r"\frac{num}{den}", cursor_backtrack=3),
     _entry(r"\functions", "List user-defined functions.", "workspace"),
     _entry(r"\grid()", "Toggle plot grid on or off.", "plotting"),

@@ -14,6 +14,7 @@ from diagnostics import (
     render_diagnostic,
     runtime_error_from_exception,
 )
+from numeric_format import format_value_for_display, matrix_to_latex as render_matrix_to_latex, value_is_fully_numeric
 
 # ImportÃ¡ tu propio motor MathTeX
 from latex_lang import (
@@ -34,36 +35,26 @@ from latex_lang import (
 def matrix_to_latex(M):
     """Convierte listas, arrays o matrices SymPy a formato LaTeX."""
     try:
-        # Si ya es una matriz de SymPy, usamos su latex interno
-        if isinstance(M, sp.MatrixBase):
-            return sp.latex(M)
-        # Si es lista o array (como [[1,2],[3,4]])
-        elif isinstance(M, (list, tuple, np.ndarray)):
-            # Convertir a SymPy.Matrix para formateo
-            mat = sp.Matrix(M)
-            return sp.latex(mat)
-        else:
-            return str(M)
+        return render_matrix_to_latex(M)
     except Exception as e:
         return f"\\textcolor{{red}}{{Matrix error: {e}}}"
 
 
 def expr_to_latex(expr):
     """Convierte cualquier tipo de expresiÃ³n a cÃ³digo LaTeX."""
-    # Si es simbÃ³lico (de SymPy)
+    if value_is_fully_numeric(expr):
+        return format_value_for_display(expr)
+
     if isinstance(expr, sp.Basic):
         return sp.latex(expr)
-    # Si es matriz
     if isinstance(expr, (sp.MatrixBase, np.ndarray, list, tuple)):
         return matrix_to_latex(expr)
-    # Si es nÃºmero o cadena
     if isinstance(expr, (int, float, complex)):
-        return str(expr)
-    # Fallback
+        return format_value_for_display(expr)
     try:
         return sp.latex(sp.sympify(expr))
     except Exception:
-        return str(expr)
+        return format_value_for_display(expr)
 
 
 _VAR_NOT_FOUND = object()
