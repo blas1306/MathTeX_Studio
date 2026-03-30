@@ -182,15 +182,35 @@ User documentation:
 
 ## Example Demos
 
-- **Physics Lab Report**: experimental data, computed values, and an automatically generated plot
-- **Linear Algebra Report**: solving a linear system and embedding matrix factorizations into a document
-- **Newton Method Demo**: numerical root-finding with generated output and plot
+MathTeX includes several example projects demonstrating different use cases:
+
+### Physics Lab Report
+Experimental data, computed values, and automatically generated plots in a single document.
+
+- measurements → computation → plot → final PDF
+- shows a complete real-world workflow
+
+### Linear Algebra Report
+Solving a linear system and embedding results directly into a technical document.
+
+- matrix definitions
+- system solving \(Ax=b\)
+- LU factorization
+
+### Newton Method Demo
+Numerical root-finding using Newton-Raphson.
+
+- function definition
+- root approximation
+- generated plot
+
+Each demo can be found in the `examples/` directory.
 
 ## Notes
 
 - If PDF compilation fails, verify that `pdflatex` is installed and available in `PATH`.
 - If preview does not work, verify that PySide6 includes QtPdf support.
-- Placeholders such as `\var{A[2,1]}` use 1-based indexing.
+- Placeholders such as `\var{A(2,1)}` use 1-based indexing.
 
 ## Philosophy
 
