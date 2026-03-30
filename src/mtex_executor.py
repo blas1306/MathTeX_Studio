@@ -604,7 +604,13 @@ _split_code_statements = split_code_statements
 # === EJECUTOR PRINCIPAL DE ARCHIVOS .MTEX ===================
 # ============================================================
 
-def ejecutar_mtex(path, contexto, abrir_pdf=True, build_dir: str | Path | None = None):
+def ejecutar_mtex(
+    path,
+    contexto,
+    abrir_pdf=True,
+    build_dir: str | Path | None = None,
+    output_basename: str | None = None,
+):
     """
     Read an .mtex file, execute MathTeX blocks,
     replace variables, and generate a .tex file and PDF.
@@ -620,9 +626,10 @@ def ejecutar_mtex(path, contexto, abrir_pdf=True, build_dir: str | Path | None =
     source_dir = source_path.parent
     output_dir_path = Path(build_dir).expanduser().resolve() if build_dir is not None else source_dir
     output_dir_path.mkdir(parents=True, exist_ok=True)
-    tex_path = output_dir_path / f"{source_path.stem}.tex"
-    pdf_path = output_dir_path / f"{source_path.stem}.pdf"
-    log_path = output_dir_path / f"{source_path.stem}.log"
+    output_stem = output_basename or source_path.stem
+    tex_path = output_dir_path / f"{output_stem}.tex"
+    pdf_path = output_dir_path / f"{output_stem}.pdf"
+    log_path = output_dir_path / f"{output_stem}.log"
     compile_log_path = output_dir_path / "compile.log"
     try:
         tex_target = os.path.relpath(tex_path, start=source_dir)

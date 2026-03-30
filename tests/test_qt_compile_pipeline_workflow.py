@@ -32,9 +32,10 @@ def _write_fake_build_outputs(
     *,
     compile_log_text: str,
     pdf_bytes: bytes | None = None,
+    output_basename: str | None = None,
 ) -> Path:
     build_dir.mkdir(parents=True, exist_ok=True)
-    stem = source_path.stem
+    stem = output_basename or source_path.stem
     (build_dir / f"{stem}.tex").write_text(f"% generated from {source_path.name}\n", encoding="utf-8")
     (build_dir / f"{stem}.log").write_text(compile_log_text, encoding="utf-8")
     (build_dir / "compile.log").write_text(compile_log_text, encoding="utf-8")
@@ -61,7 +62,7 @@ def test_manual_and_auto_compile_use_consistent_build_pipeline(
         lambda pdf_path, preserve_state=True: preview_loads.append((Path(pdf_path), preserve_state)) or True,
     )
 
-    def _fake_execute(path, contexto, abrir_pdf=False, build_dir=None):
+    def _fake_execute(path, contexto, abrir_pdf=False, build_dir=None, output_basename=None):
         del contexto
         build_path = Path(build_dir)
         source = Path(path)
@@ -71,6 +72,7 @@ def test_manual_and_auto_compile_use_consistent_build_pipeline(
             source,
             compile_log_text="consistent success\n",
             pdf_bytes=b"%PDF-1.4\n%consistent\n",
+            output_basename=output_basename,
         )
         return str(pdf_path)
 
@@ -96,7 +98,12 @@ def test_manual_and_auto_compile_use_consistent_build_pipeline(
     assert manual_result.pdf_path == artifacts.pdf_path == auto_result.pdf_path
     assert manual_pdf == artifacts.pdf_path == auto_pdf
     assert [path.name for path in manual_result.output_files] == [path.name for path in auto_result.output_files]
-    assert [path.name for path in auto_result.output_files] == ["compile.log", "main.log", "main.pdf", "main.tex"]
+    assert [path.name for path in auto_result.output_files] == [
+        "compile.log",
+        f"{artifacts.tex_path.stem}.log",
+        f"{artifacts.pdf_path.stem}.pdf",
+        f"{artifacts.tex_path.stem}.tex",
+    ]
     assert any("Manual compile finished successfully." in entry.message for entry in manual_result.logs)
     assert any("Auto compile finished successfully." in entry.message for entry in auto_result.logs)
     assert studio_window.build_status_label is not None
@@ -121,6 +128,7 @@ def test_failed_build_preserves_previous_valid_pdf_across_multiple_attempts(
         source_path,
         compile_log_text="seed success\n",
         pdf_bytes=previous_bytes,
+        output_basename=artifacts.tex_path.stem,
     )
     studio_window.last_generated_pdf = previous_pdf
 
@@ -128,7 +136,7 @@ def test_failed_build_preserves_previous_valid_pdf_across_multiple_attempts(
     attempts: list[int] = []
     monkeypatch.setattr(studio_window.preview, "set_message", lambda text: preview_messages.append(text))
 
-    def _fake_execute(path, contexto, abrir_pdf=False, build_dir=None):
+    def _fake_execute(path, contexto, abrir_pdf=False, build_dir=None, output_basename=None):
         del contexto, abrir_pdf
         attempt = len(attempts) + 1
         attempts.append(attempt)
@@ -136,6 +144,7 @@ def test_failed_build_preserves_previous_valid_pdf_across_multiple_attempts(
             Path(build_dir),
             Path(path),
             compile_log_text=f"failure attempt {attempt}\n",
+            output_basename=output_basename,
         )
         return None
 
@@ -168,13 +177,14 @@ def test_failed_build_adds_probable_cause_from_compile_log_to_logs_panel(
     assert studio_window.current_mtex_path is not None
 
     source_path = studio_window.current_mtex_path
+    artifacts = studio_window._build_artifacts_for_source(source_path)
 
-    def _fake_execute(path, contexto, abrir_pdf=False, build_dir=None):
-        del contexto, abrir_pdf
+    def _fake_execute(path, contexto, abrir_pdf=False, build_dir=None, output_basename=None):
+        del path, contexto, abrir_pdf
         build_path = Path(build_dir)
-        source = Path(path)
         build_path.mkdir(parents=True, exist_ok=True)
-        (build_path / f"{source.stem}.tex").write_text(
+        stem = output_basename or artifacts.tex_path.stem
+        (build_path / f"{stem}.tex").write_text(
             "\\documentclass{article}\n"
             "\\begin{document}\n"
             "\\[\n"
@@ -188,7 +198,7 @@ def test_failed_build_adds_probable_cause_from_compile_log_to_logs_panel(
             "l.19 \\left[\\begin{matrix}1 &\n"
             " 2\\\\3 & 4\\end{matrix}\\right]\n"
         )
-        (build_path / f"{source.stem}.log").write_text(log_text, encoding="utf-8")
+        (build_path / f"{stem}.log").write_text(log_text, encoding="utf-8")
         (build_path / "compile.log").write_text(log_text, encoding="utf-8")
         return None
 
@@ -226,7 +236,7 @@ def test_successful_build_after_failure_replaces_previous_valid_pdf_cleanly(
         lambda pdf_path, preserve_state=True: preview_loads.append(Path(pdf_path)) or True,
     )
 
-    def _fake_execute(path, contexto, abrir_pdf=False, build_dir=None):
+    def _fake_execute(path, contexto, abrir_pdf=False, build_dir=None, output_basename=None):
         del contexto, abrir_pdf
         attempt = len(attempts) + 1
         attempts.append(attempt)
@@ -236,6 +246,7 @@ def test_successful_build_after_failure_replaces_previous_valid_pdf_cleanly(
                 Path(path),
                 compile_log_text="success 1\n",
                 pdf_bytes=b"%PDF-1.4\n%v1\n",
+                output_basename=output_basename,
             )
             return str(pdf_path)
         if attempt == 2:
@@ -243,6 +254,7 @@ def test_successful_build_after_failure_replaces_previous_valid_pdf_cleanly(
                 Path(build_dir),
                 Path(path),
                 compile_log_text="failure 2\n",
+                output_basename=output_basename,
             )
             return None
         pdf_path = _write_fake_build_outputs(
@@ -250,6 +262,7 @@ def test_successful_build_after_failure_replaces_previous_valid_pdf_cleanly(
             Path(path),
             compile_log_text="success 3\n",
             pdf_bytes=b"%PDF-1.4\n%v2\n",
+            output_basename=output_basename,
         )
         return str(pdf_path)
 
@@ -281,12 +294,20 @@ def test_build_outputs_do_not_leak_between_projects(
 
     project_a = studio_window.current_project
     project_b = ProjectManager().create_project("SecondBuildProject", tmp_path)
-    artifacts_a = studio_window.output_manager.artifacts_for_source(project_a.main_path, project_root=project_a.path)
-    artifacts_b = studio_window.output_manager.artifacts_for_source(project_b.main_path, project_root=project_b.path)
+    artifacts_a = studio_window.output_manager.artifacts_for_source(
+        project_a.main_path,
+        project_root=project_a.path,
+        output_basename=project_a.name,
+    )
+    artifacts_b = studio_window.output_manager.artifacts_for_source(
+        project_b.main_path,
+        project_root=project_b.path,
+        output_basename=project_b.name,
+    )
 
     monkeypatch.setattr(studio_window.preview, "load_pdf", lambda pdf_path, preserve_state=True: True)
 
-    def _fake_execute(path, contexto, abrir_pdf=False, build_dir=None):
+    def _fake_execute(path, contexto, abrir_pdf=False, build_dir=None, output_basename=None):
         del contexto, abrir_pdf
         source = Path(path)
         project_marker = source.parent.name.encode("utf-8")
@@ -295,6 +316,7 @@ def test_build_outputs_do_not_leak_between_projects(
             source,
             compile_log_text=f"log for {source.parent.name}\n",
             pdf_bytes=b"%PDF-1.4\n%" + project_marker + b"\n",
+            output_basename=output_basename,
         )
         return str(pdf_path)
 
@@ -321,7 +343,7 @@ def test_build_outputs_do_not_leak_between_projects(
     assert all(str(artifacts_a.build_dir) not in entry.message for entry in second_result.logs)
     assert (artifacts_a.build_dir / "compile.log").read_text(encoding="utf-8") == f"log for {project_a.name}\n"
     assert (artifacts_b.build_dir / "compile.log").read_text(encoding="utf-8") == f"log for {project_b.name}\n"
-    assert (artifacts_a.build_dir / "main.pdf").read_bytes() != (artifacts_b.build_dir / "main.pdf").read_bytes()
+    assert artifacts_a.pdf_path.read_bytes() != artifacts_b.pdf_path.read_bytes()
 
 
 def test_auto_compile_pending_build_runs_once_after_current_build_finishes(

@@ -389,7 +389,11 @@ class ProjectManager:
     def _default_template(self, project_name: str) -> str:
         return (
             "\\documentclass{article}\n"
-            "\\usepackage{graphicx} % Required for inserting images\n\n"
+            "\\usepackage{graphicx} % Required for inserting images\n"
+            "\\usepackage{amsmath}\n"
+            "\\usepackage{amsthm}\n"
+            "\\usepackage{amssymb}\n"
+            "\\usepackage{float}\n\n"
             f"\\title{{{project_name}}}\n"
             "\\date{\\today}\n\n"
             "\\begin{document}\n\n"

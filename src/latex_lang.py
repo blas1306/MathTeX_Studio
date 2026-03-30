@@ -3831,8 +3831,6 @@ def plot(*args, a: float = -5.0, b: float = 5.0, n: int = 400, name: str | None 
             if not _PLOT_BACKEND.hold:
                 ax.cla()
             ax.plot(X, Y)
-            if not _PLOT_BACKEND.title_text:
-                ax.set_title(f"{sp.latex(expr)} en [{a_val}, {b_val}]")
             if not _PLOT_BACKEND.xlabel_text:
                 ax.set_xlabel("$x$")
             if not _PLOT_BACKEND.ylabel_text:
@@ -3887,11 +3885,6 @@ def plot(*args, a: float = -5.0, b: float = 5.0, n: int = 400, name: str | None 
             ax.set_ylabel("$f(x)$")
         if plotted_names:
             ax.legend()
-            if not _PLOT_BACKEND.title_text:
-                ax.set_title(f"Functions: {', '.join(plotted_names)}")
-        else:
-            if not _PLOT_BACKEND.title_text:
-                ax.set_title("Functions")
         _PLOT_BACKEND._apply_axes_state()
         return _render_backend(name)
 

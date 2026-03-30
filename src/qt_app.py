@@ -2589,7 +2589,18 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
 
     def _build_artifacts_for_source(self, source_path: Path):
         project_root = self.current_project.path if self.current_project is not None else source_path.parent
-        return self.output_manager.artifacts_for_source(source_path, project_root=project_root)
+        output_basename = source_path.stem
+        if self.current_project is not None:
+            try:
+                if source_path.resolve() == self.current_project.main_path.resolve():
+                    output_basename = self.current_project.name
+            except OSError:
+                output_basename = source_path.stem
+        return self.output_manager.artifacts_for_source(
+            source_path,
+            project_root=project_root,
+            output_basename=output_basename,
+        )
 
     def _derive_output_pdf_path(self, source_path: Path) -> Path:
         return self._build_artifacts_for_source(source_path).pdf_path
@@ -2621,7 +2632,13 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         generated_pdf = None
         try:
             with redirect_stdout(collector.stream("stdout")), redirect_stderr(collector.stream("stderr")):
-                generated_pdf = ejecutar_mtex(str(path), env_ast, abrir_pdf=False, build_dir=artifacts.build_dir)
+                generated_pdf = ejecutar_mtex(
+                    str(path),
+                    env_ast,
+                    abrir_pdf=False,
+                    build_dir=artifacts.build_dir,
+                    output_basename=artifacts.tex_path.stem,
+                )
         except Exception as exc:  # pragma: no cover - defensivo
             collector.add_entry(f"Unexpected error during compilation: {exc}", level="error", source="app")
         self._refresh_mtex_file_tree()

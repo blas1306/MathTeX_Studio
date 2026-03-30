@@ -27,11 +27,15 @@ class ProjectOutputManagerTests(unittest.TestCase):
         source_path.write_text("\\documentclass{article}\n\\begin{document}\nHi\n\\end{document}\n", encoding="utf-8")
 
         manager = ProjectOutputManager()
-        artifacts = manager.artifacts_for_source(source_path, project_root=project_root)
+        artifacts = manager.artifacts_for_source(
+            source_path,
+            project_root=project_root,
+            output_basename=project_root.name,
+        )
 
         self.assertEqual(artifacts.build_dir, project_root / BUILD_DIRNAME)
-        self.assertEqual(artifacts.tex_path, project_root / BUILD_DIRNAME / "main.tex")
-        self.assertEqual(artifacts.pdf_path, project_root / BUILD_DIRNAME / "main.pdf")
+        self.assertEqual(artifacts.tex_path, project_root / BUILD_DIRNAME / "DemoProject.tex")
+        self.assertEqual(artifacts.pdf_path, project_root / BUILD_DIRNAME / "DemoProject.pdf")
         self.assertEqual(artifacts.compile_log_path, project_root / BUILD_DIRNAME / COMPILE_LOG_FILENAME)
 
 
@@ -66,9 +70,9 @@ class EjecutarMtexBuildOutputTests(unittest.TestCase):
             calls.append((tex_filename, cwd, draftmode, output_dir))
             target_dir = Path(output_dir or cwd)
             target_dir.mkdir(parents=True, exist_ok=True)
-            (target_dir / "main.log").write_text("Compilation finished.\n", encoding="utf-8")
+            (target_dir / f"{self.project_root.name}.log").write_text("Compilation finished.\n", encoding="utf-8")
             if not draftmode:
-                (target_dir / "main.pdf").write_bytes(b"%PDF-1.4\n%mock\n")
+                (target_dir / f"{self.project_root.name}.pdf").write_bytes(b"%PDF-1.4\n%mock\n")
 
             class _Result:
                 returncode = 0
@@ -76,11 +80,17 @@ class EjecutarMtexBuildOutputTests(unittest.TestCase):
             return _Result()
 
         with patch("mtex_executor._run_pdflatex", side_effect=_fake_pdflatex):
-            generated_pdf = ejecutar_mtex(str(self.source_path), env_ast, abrir_pdf=False, build_dir=self.build_dir)
+            generated_pdf = ejecutar_mtex(
+                str(self.source_path),
+                env_ast,
+                abrir_pdf=False,
+                build_dir=self.build_dir,
+                output_basename=self.project_root.name,
+            )
 
-        self.assertEqual(Path(generated_pdf), self.build_dir / "main.pdf")
-        self.assertTrue((self.build_dir / "main.tex").exists())
-        self.assertTrue((self.build_dir / "main.pdf").exists())
+        self.assertEqual(Path(generated_pdf), self.build_dir / f"{self.project_root.name}.pdf")
+        self.assertTrue((self.build_dir / f"{self.project_root.name}.tex").exists())
+        self.assertTrue((self.build_dir / f"{self.project_root.name}.pdf").exists())
         self.assertTrue((self.build_dir / COMPILE_LOG_FILENAME).exists())
         self.assertFalse((self.project_root / "main.tex").exists())
         self.assertFalse((self.project_root / "main.pdf").exists())

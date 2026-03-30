@@ -40,11 +40,12 @@ class ProjectOutputManager:
         self,
         source_path: str | Path,
         project_root: str | Path | None = None,
+        output_basename: str | None = None,
     ) -> BuildArtifacts:
         resolved_source = _normalize_path(source_path)
         resolved_project_root = _normalize_path(project_root) if project_root is not None else resolved_source.parent
         build_dir = self.build_dir_for_project(resolved_project_root)
-        stem = resolved_source.stem
+        stem = output_basename or resolved_source.stem
         return BuildArtifacts(
             project_root=resolved_project_root,
             source_path=resolved_source,

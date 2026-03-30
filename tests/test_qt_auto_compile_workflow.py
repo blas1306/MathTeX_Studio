@@ -32,9 +32,10 @@ def _write_fake_build_outputs(
     *,
     compile_log_text: str,
     pdf_bytes: bytes | None = None,
+    output_basename: str | None = None,
 ) -> Path:
     build_dir.mkdir(parents=True, exist_ok=True)
-    stem = source_path.stem
+    stem = output_basename or source_path.stem
     (build_dir / f"{stem}.tex").write_text(f"% generated from {source_path.name}\n", encoding="utf-8")
     (build_dir / f"{stem}.log").write_text(compile_log_text, encoding="utf-8")
     (build_dir / "compile.log").write_text(compile_log_text, encoding="utf-8")

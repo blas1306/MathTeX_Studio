@@ -32,9 +32,10 @@ def _write_fake_build_outputs(
     *,
     compile_log_text: str,
     pdf_bytes: bytes | None = None,
+    output_basename: str | None = None,
 ) -> Path:
     build_dir.mkdir(parents=True, exist_ok=True)
-    stem = source_path.stem
+    stem = output_basename or source_path.stem
     (build_dir / f"{stem}.tex").write_text(f"% generated from {source_path.name}\n", encoding="utf-8")
     (build_dir / f"{stem}.log").write_text(compile_log_text, encoding="utf-8")
     (build_dir / "compile.log").write_text(compile_log_text, encoding="utf-8")
@@ -84,10 +85,11 @@ def test_build_status_is_visible_during_manual_build_and_finishes_in_success(
     assert studio_window.build_status_label is not None
 
     source_path = studio_window.current_mtex_path
+    artifacts = studio_window._build_artifacts_for_source(source_path)
     observed_statuses: list[str] = []
     monkeypatch.setattr(studio_window.preview, "load_pdf", lambda pdf_path, preserve_state=True: True)
 
-    def _fake_execute(path, contexto, abrir_pdf=False, build_dir=None):
+    def _fake_execute(path, contexto, abrir_pdf=False, build_dir=None, output_basename=None):
         del contexto, abrir_pdf
         observed_statuses.append(studio_window.build_status_label.text())
         pdf_path = _write_fake_build_outputs(
@@ -95,6 +97,7 @@ def test_build_status_is_visible_during_manual_build_and_finishes_in_success(
             Path(path),
             compile_log_text="manual success\n",
             pdf_bytes=b"%PDF-1.4\n%manual\n",
+            output_basename=output_basename,
         )
         return str(pdf_path)
 

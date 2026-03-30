@@ -26,12 +26,26 @@ class ProjectManagerTests(unittest.TestCase):
 
     def test_create_project_generates_expected_structure(self) -> None:
         project = self.manager.create_project("SampleProject", self.root)
+        expected_main = (
+            "\\documentclass{article}\n"
+            "\\usepackage{graphicx} % Required for inserting images\n"
+            "\\usepackage{amsmath}\n"
+            "\\usepackage{amsthm}\n"
+            "\\usepackage{amssymb}\n"
+            "\\usepackage{float}\n\n"
+            "\\title{SampleProject}\n"
+            "\\date{\\today}\n\n"
+            "\\begin{document}\n\n"
+            "\\maketitle\n\n"
+            "\\section{Introduction}\n\n"
+            "\\end{document}\n"
+        )
 
         self.assertEqual(project.name, "SampleProject")
         self.assertTrue((project.path / ".mtexproj").exists())
         self.assertTrue((project.path / BUILD_DIRNAME).is_dir())
         self.assertTrue(project.main_path.exists())
-        self.assertIn("\\title{SampleProject}", project.main_path.read_text(encoding="utf-8"))
+        self.assertEqual(project.main_path.read_text(encoding="utf-8"), expected_main)
 
         metadata = json.loads((project.path / ".mtexproj").read_text(encoding="utf-8"))
         self.assertEqual(metadata["name"], "SampleProject")
