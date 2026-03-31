@@ -689,13 +689,16 @@ def handle_functions(linea: str, ctx: ParserContext) -> bool:
                     val = symbols(a)
                 arg_exprs.append(val)
 
-            arg_exprs = _expand_function_args(arg_exprs, len(vars_info))
-            if len(arg_exprs) != len(vars_info):
-                print(f"Error: function {fname} expects {len(vars_info)} argument(s).")
-                return True
-
-            subs_map = {vars_info[i]: arg_exprs[i] for i in range(len(vars_info))}
-            res = f_expr.subs(subs_map)
+            mt_call = contexto_eval.get("_mt_call")
+            if callable(mt_call):
+                res = mt_call(fname, *arg_exprs)
+            else:
+                arg_exprs = _expand_function_args(arg_exprs, len(vars_info))
+                if len(arg_exprs) != len(vars_info):
+                    print(f"Error: function {fname} expects {len(vars_info)} argument(s).")
+                    return True
+                subs_map = {vars_info[i]: arg_exprs[i] for i in range(len(vars_info))}
+                res = f_expr.subs(subs_map)
 
             if all(isinstance(v, (int, float)) or getattr(v, "is_number", False) for v in arg_exprs):
                 res = res.evalf()

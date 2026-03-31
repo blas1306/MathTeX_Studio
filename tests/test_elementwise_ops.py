@@ -27,6 +27,21 @@ class ElementwiseOpsTests(unittest.TestCase):
         self.assertIsNotNone(y)
         self.assertEqual(y.tolist(), [[-1, -1, 1, 5, 11]])
 
+    def test_vector_function_expression_statement_uses_runtime_call_path(self):
+        self._run(
+            [
+                "v = [-2, -1, 0, 1, 2];",
+                "f(z) = z.^2 + 3.*z + 1;",
+            ]
+        )
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            ejecutar_linea("f(v)")
+        output = buf.getvalue()
+        self.assertIn("f(v) =", output)
+        self.assertIn("11", output)
+        self.assertNotIn("Error while evaluating", output)
+
     def test_matrix_ops(self):
         self._run(
             [

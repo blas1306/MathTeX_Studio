@@ -1,0 +1,13 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+
+\title{DemoProject2}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+\end{document}

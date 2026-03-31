@@ -29,6 +29,15 @@ class NRCommandTests(unittest.TestCase):
         self.assertAlmostEqual(float(env_ast["x"]), 2 ** 0.5, places=7)
         self.assertAlmostEqual(float(env_ast["x"]), float(env_ast["nr_last_root"]), places=12)
 
+    def test_nr_assignment_accepts_seed_and_tolerance_from_variables(self):
+        self._run("j(x) = x.^2 - 2;")
+        self._run("x0 = 1;")
+        self._run("tol = 1e-8;")
+        out = self._run(r"root = \NR(j, x0, tol);")
+        self.assertNotIn("Did not converge", out)
+        self.assertIn("root", env_ast)
+        self.assertAlmostEqual(float(env_ast["root"]), 2 ** 0.5, places=7)
+
 
 if __name__ == "__main__":
     unittest.main()

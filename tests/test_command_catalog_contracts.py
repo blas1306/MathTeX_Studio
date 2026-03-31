@@ -88,3 +88,4 @@ def test_diag_and_Diag_catalog_descriptions_match_runtime_behavior():
 
     assert descriptions[r"\diag()"] == "Extract the diagonal of a matrix."
     assert descriptions[r"\Diag()"] == "Build a diagonal matrix."
+    assert descriptions[r"\format()"] == "Set the global numeric display format."
