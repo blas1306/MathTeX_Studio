@@ -1609,7 +1609,8 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
     def _build_mtex_tab(self) -> QtWidgets.QWidget:
         root = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(root)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         self.project_stack = QtWidgets.QStackedWidget()
         self.project_home_widget = ProjectHomeWidget(root)
         self.project_workspace_widget = ProjectWorkspaceWidget(

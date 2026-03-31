@@ -7,6 +7,7 @@ from PySide6 import QtCore, QtGui, QtWidgets, QtPdf, QtPdfWidgets  # type: ignor
 
 
 PREVIEW_BG = "#1e1e1e"
+PREVIEW_SECTION_SPACING = 8
 
 
 @dataclass
@@ -24,18 +25,54 @@ class PreviewState:
 class PdfPreviewWidget(QtWidgets.QWidget):  # type: ignore[misc]
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
+        self.setObjectName("pdfPreviewRoot")
         self._document = QtPdf.QPdfDocument(self)
         self._current_pdf_path: Path | None = None
         self._pending_restore_state: PreviewState | None = None
         self._closing = False
         self._page_input_editing = False
+        self.setStyleSheet(
+            """
+            QWidget#pdfPreviewRoot {
+                background: transparent;
+            }
+            QFrame#pdfPreviewToolbar {
+                background: #24292f;
+                border: 1px solid #363c44;
+                border-radius: 6px;
+            }
+            QToolButton#pdfPreviewButton {
+                background: #2a3037;
+                border: 1px solid #434b55;
+                border-radius: 5px;
+                color: #d7dde3;
+                padding: 3px 9px;
+                min-height: 24px;
+            }
+            QToolButton#pdfPreviewButton:hover {
+                background: #333941;
+                border-color: #56606c;
+            }
+            QToolButton#pdfPreviewButton:disabled {
+                color: #838c95;
+                border-color: #3b424a;
+            }
+            QLabel#pdfPageTotalLabel {
+                color: #cfcfcf;
+                padding-left: 4px;
+            }
+            """
+        )
 
         root = QtWidgets.QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(6)
+        root.setSpacing(PREVIEW_SECTION_SPACING)
 
-        toolbar = QtWidgets.QHBoxLayout()
-        toolbar.setSpacing(4)
+        toolbar_frame = QtWidgets.QFrame()
+        toolbar_frame.setObjectName("pdfPreviewToolbar")
+        toolbar = QtWidgets.QHBoxLayout(toolbar_frame)
+        toolbar.setContentsMargins(6, 6, 6, 6)
+        toolbar.setSpacing(6)
         self.prev_btn = self._make_button("Prev", "Previous page")
         self.next_btn = self._make_button("Next", "Next page")
         self.zoom_out_btn = self._make_button("-", "Zoom out")
@@ -57,7 +94,7 @@ class PdfPreviewWidget(QtWidgets.QWidget):  # type: ignore[misc]
             QtGui.QRegularExpressionValidator(QtCore.QRegularExpression(r"\d*"), self.page_input)
         )
         self.page_total_label = QtWidgets.QLabel("/ -")
-        self.page_total_label.setStyleSheet("color: #cfcfcf; padding-left: 4px;")
+        self.page_total_label.setObjectName("pdfPageTotalLabel")
         for button in (
             self.prev_btn,
             self.next_btn,
@@ -72,21 +109,21 @@ class PdfPreviewWidget(QtWidgets.QWidget):  # type: ignore[misc]
         toolbar.addStretch()
         toolbar.addWidget(self.page_input)
         toolbar.addWidget(self.page_total_label)
-        root.addLayout(toolbar)
+        root.addWidget(toolbar_frame)
 
         self._stack = QtWidgets.QStackedWidget()
         self._message_label = QtWidgets.QLabel("Compile an .mtex file to preview it.")
         self._message_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self._message_label.setWordWrap(True)
-        self._message_label.setMinimumHeight(220)
+        self._message_label.setMinimumHeight(240)
         self._message_label.setStyleSheet(
-            f"background: {PREVIEW_BG}; color: #f2f2f2; border: 1px solid #3c3c3c; border-radius: 4px;"
+            f"background: {PREVIEW_BG}; color: #f2f2f2; border: 1px solid #3c3c3c; border-radius: 6px;"
         )
 
         self._view = QtPdfWidgets.QPdfView(self)
         self._view.setPageMode(QtPdfWidgets.QPdfView.PageMode.MultiPage)
         self._view.setZoomMode(QtPdfWidgets.QPdfView.ZoomMode.FitToWidth)
-        self._view.setStyleSheet(f"background: {PREVIEW_BG}; border: 1px solid #3c3c3c; border-radius: 4px;")
+        self._view.setStyleSheet(f"background: {PREVIEW_BG}; border: 1px solid #3c3c3c; border-radius: 6px;")
         self._view.setDocument(self._document)
 
         self._stack.addWidget(self._message_label)
@@ -112,6 +149,7 @@ class PdfPreviewWidget(QtWidgets.QWidget):  # type: ignore[misc]
 
     def _make_button(self, text: str, tooltip: str) -> QtWidgets.QToolButton:
         button = QtWidgets.QToolButton()
+        button.setObjectName("pdfPreviewButton")
         button.setText(text)
         button.setToolTip(tooltip)
         button.setAutoRaise(False)

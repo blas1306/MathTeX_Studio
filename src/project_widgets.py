@@ -11,6 +11,16 @@ from PySide6 import QtCore, QtGui, QtWidgets  # type: ignore
 _Signal = QtCore.Signal  # type: ignore[attr-defined]
 
 
+WORKSPACE_OUTER_MARGIN = 12
+WORKSPACE_SECTION_SPACING = 10
+WORKSPACE_ROW_SPACING = 6
+WORKSPACE_PANEL_PADDING = 8
+WORKSPACE_LEFT_MIN_WIDTH = 240
+WORKSPACE_EDITOR_MIN_WIDTH = 420
+WORKSPACE_PREVIEW_MIN_WIDTH = 420
+WORKSPACE_DEFAULT_SPLITTER_WEIGHTS = (22, 38, 40)
+
+
 def _format_timestamp(raw_value: str | None) -> str:
     if not raw_value:
         return "Unknown"
@@ -172,31 +182,52 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
         parent=None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("projectWorkspaceRoot")
         self._project: ProjectInfo | None = None
         self._preview_message = preview_message
         self._project_manager = project_manager or ProjectManager()
+        self._workspace_splitter: QtWidgets.QSplitter | None = None
+        self._splitter_defaults_applied = False
+        self.setStyleSheet(self._workspace_stylesheet())
 
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(
+            WORKSPACE_OUTER_MARGIN,
+            WORKSPACE_OUTER_MARGIN,
+            WORKSPACE_OUTER_MARGIN,
+            WORKSPACE_OUTER_MARGIN,
+        )
+        layout.setSpacing(WORKSPACE_SECTION_SPACING)
+
+        header_frame = QtWidgets.QFrame()
+        header_frame.setObjectName("workspaceHeaderCard")
+        header_layout = QtWidgets.QVBoxLayout(header_frame)
+        header_layout.setContentsMargins(10, 10, 10, 10)
+        header_layout.setSpacing(WORKSPACE_SECTION_SPACING)
 
         header = QtWidgets.QHBoxLayout()
+        header.setSpacing(WORKSPACE_SECTION_SPACING)
         self.home_btn = QtWidgets.QPushButton("Project Home")
         self.project_name_label = QtWidgets.QLabel("No project open")
+        self.project_name_label.setObjectName("projectNameLabel")
         title_font = QtGui.QFont()
-        title_font.setPointSize(14)
+        title_font.setPointSize(15)
         title_font.setBold(True)
         self.project_name_label.setFont(title_font)
+        project_identity = QtWidgets.QVBoxLayout()
+        project_identity.setContentsMargins(0, 0, 0, 0)
+        project_identity.setSpacing(2)
         self.project_path_label = QtWidgets.QLabel("")
-        self.project_path_label.setStyleSheet("color: #7a7a7a;")
+        self.project_path_label.setObjectName("projectPathLabel")
+        self.project_path_label.setWordWrap(True)
         header.addWidget(self.home_btn)
-        header.addSpacing(10)
-        header.addWidget(self.project_name_label)
-        header.addStretch()
-        header.addWidget(self.project_path_label)
-        layout.addLayout(header)
+        project_identity.addWidget(self.project_name_label)
+        project_identity.addWidget(self.project_path_label)
+        header.addLayout(project_identity, 1)
+        header_layout.addLayout(header)
 
         toolbar = QtWidgets.QHBoxLayout()
+        toolbar.setSpacing(WORKSPACE_ROW_SPACING)
         self.save_btn = QtWidgets.QPushButton("Save")
         self.save_as_btn = QtWidgets.QPushButton("Save As...")
         self.compile_btn = QtWidgets.QPushButton("Compile")
@@ -206,41 +237,60 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
         self.logs_output_btn = QtWidgets.QPushButton("Logs & Output Files")
         self.build_status_label = QtWidgets.QLabel()
         self.build_status_label.setMinimumWidth(240)
+        self.build_status_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.build_status_label.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.MinimumExpanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        self.file_meta_label = QtWidgets.QLabel("Active file")
+        self.file_meta_label.setObjectName("toolbarMetaLabel")
         self.file_label = QtWidgets.QLabel("No file open")
-        self.file_label.setStyleSheet("color: #7a7a7a;")
+        self.file_label.setObjectName("activeFileValue")
+        self.file_label.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
         toolbar.addWidget(self.save_btn)
         toolbar.addWidget(self.save_as_btn)
         toolbar.addWidget(self.compile_btn)
         toolbar.addWidget(self.auto_compile_checkbox)
         toolbar.addWidget(self.logs_output_btn)
-        toolbar.addWidget(self.build_status_label)
         toolbar.addStretch()
+        toolbar.addWidget(self.build_status_label)
+        toolbar.addWidget(self.file_meta_label)
         toolbar.addWidget(self.file_label)
-        layout.addLayout(toolbar)
+        header_layout.addLayout(toolbar)
+        layout.addWidget(header_frame)
 
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(10)
+        self._workspace_splitter = splitter
 
-        left_panel = QtWidgets.QWidget()
-        left_layout = QtWidgets.QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 6, 0)
-        tree_header = QtWidgets.QHBoxLayout()
-        tree_header.setContentsMargins(0, 0, 0, 0)
-        tree_header.setSpacing(6)
-        tree_title = QtWidgets.QLabel("Project Files")
-        tree_header.addWidget(tree_title)
-        tree_header.addStretch()
+        left_panel, left_layout, _tree_header = self._create_panel_frame(
+            "Project Files",
+            "Browse and manage project assets",
+            variant="muted",
+        )
+        left_panel.setMinimumWidth(WORKSPACE_LEFT_MIN_WIDTH)
+        tree_actions = QtWidgets.QHBoxLayout()
+        tree_actions.setContentsMargins(0, 0, 0, 0)
+        tree_actions.setSpacing(WORKSPACE_ROW_SPACING)
         self.new_file_btn = self._make_tree_action_button("New File", "Create a file in the selected folder")
         self.new_folder_btn = self._make_tree_action_button("New Folder", "Create a folder in the selected folder")
         self.upload_btn = self._make_tree_action_button("Upload", "Copy files into the selected folder")
         self.refresh_tree_btn = self._make_tree_action_button("Refresh", "Refresh the project file tree")
-        tree_header.addWidget(self.new_file_btn)
-        tree_header.addWidget(self.new_folder_btn)
-        tree_header.addWidget(self.upload_btn)
-        tree_header.addWidget(self.refresh_tree_btn)
-        left_layout.addLayout(tree_header)
+        tree_actions.addWidget(self.new_file_btn)
+        tree_actions.addWidget(self.new_folder_btn)
+        tree_actions.addWidget(self.upload_btn)
+        tree_actions.addWidget(self.refresh_tree_btn)
+        tree_actions.addStretch()
+        left_layout.addLayout(tree_actions)
         self.file_tree = QtWidgets.QTreeWidget()
+        self.file_tree.setObjectName("projectFileTree")
+        self.file_tree.setAlternatingRowColors(True)
         self.file_tree.setHeaderHidden(True)
+        self.file_tree.setIndentation(18)
         self.file_tree.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.file_tree.itemExpanded.connect(self._on_item_expanded)
         self.file_tree.itemDoubleClicked.connect(self._on_item_double_clicked)
@@ -250,24 +300,28 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
         self.editor_widget = editor_factory()
         if isinstance(self.editor_widget, QtWidgets.QPlainTextEdit):
             self.editor_widget.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.WidgetWidth)
-        editor_panel = QtWidgets.QWidget()
-        editor_layout = QtWidgets.QVBoxLayout(editor_panel)
-        editor_layout.setContentsMargins(0, 0, 6, 0)
-        editor_layout.addWidget(QtWidgets.QLabel("MathTeX Content (.mtex)"))
+            self.editor_widget.setObjectName("workspaceMtexEditor")
+        editor_panel, editor_layout, _editor_header = self._create_panel_frame(
+            "MathTeX Content (.mtex)",
+            "Compose and edit the active document",
+            variant="primary",
+        )
+        editor_panel.setMinimumWidth(WORKSPACE_EDITOR_MIN_WIDTH)
         editor_layout.addWidget(self.editor_widget, 1)
         splitter.addWidget(editor_panel)
 
         self.preview_widget = preview_factory()
-        preview_panel = QtWidgets.QWidget()
-        preview_layout = QtWidgets.QVBoxLayout(preview_panel)
-        preview_layout.setContentsMargins(6, 0, 0, 0)
-        preview_layout.addWidget(QtWidgets.QLabel("PDF Preview"))
+        preview_panel, preview_layout, _preview_header = self._create_panel_frame(
+            "PDF Preview",
+            "Review the compiled output",
+        )
+        preview_panel.setMinimumWidth(WORKSPACE_PREVIEW_MIN_WIDTH)
         preview_layout.addWidget(self.preview_widget, 1)
         splitter.addWidget(preview_panel)
 
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        splitter.setStretchFactor(2, 1)
+        splitter.setStretchFactor(0, WORKSPACE_DEFAULT_SPLITTER_WEIGHTS[0])
+        splitter.setStretchFactor(1, WORKSPACE_DEFAULT_SPLITTER_WEIGHTS[1])
+        splitter.setStretchFactor(2, WORKSPACE_DEFAULT_SPLITTER_WEIGHTS[2])
         layout.addWidget(splitter, 1)
 
         self.home_btn.clicked.connect(self.home_requested.emit)
@@ -293,6 +347,7 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
             return
         self.project_name_label.setText(project.name)
         self.project_path_label.setText(str(project.path))
+        self.project_path_label.setToolTip(str(project.path))
         self.refresh_file_tree(selected_path=project.path)
 
     def clear_workspace(self) -> None:
@@ -300,6 +355,7 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
         self.file_tree.clear()
         self.project_name_label.setText("No project open")
         self.project_path_label.setText("")
+        self.project_path_label.setToolTip("")
         self.file_label.setText("No file open")
         self.set_build_status("Build: Ready")
         if isinstance(self.editor_widget, QtWidgets.QPlainTextEdit):
@@ -358,6 +414,201 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
         """
         )
 
+    def _workspace_stylesheet(self) -> str:
+        return """
+        QWidget#projectWorkspaceRoot {
+            background: #181b1f;
+        }
+        QFrame#workspaceHeaderCard {
+            background: #20242a;
+            border: 1px solid #333942;
+            border-radius: 10px;
+        }
+        QFrame#workspacePanelMuted {
+            background: #20252a;
+            border: 1px solid #313740;
+            border-radius: 10px;
+        }
+        QFrame#workspacePanel {
+            background: #22272d;
+            border: 1px solid #363c45;
+            border-radius: 10px;
+        }
+        QFrame#workspacePanelPrimary {
+            background: #252b32;
+            border: 1px solid #424b56;
+            border-radius: 10px;
+        }
+        QLabel#projectNameLabel {
+            color: #f1f3f5;
+            background: transparent;
+            border: none;
+        }
+        QLabel#projectPathLabel {
+            color: #89939d;
+            background: transparent;
+            border: none;
+            font-size: 11px;
+        }
+        QLabel#panelTitle {
+            color: #f1f3f5;
+            background: transparent;
+            border: none;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        QLabel#panelSubtitle {
+            color: #86909a;
+            background: transparent;
+            border: none;
+            font-size: 11px;
+        }
+        QLabel#toolbarMetaLabel {
+            color: #86909a;
+            background: transparent;
+            border: none;
+            font-size: 11px;
+        }
+        QLabel#activeFileValue {
+            color: #edf1f5;
+            background: transparent;
+            border: none;
+            font-weight: 600;
+        }
+        QToolButton#treeActionButton {
+            background: #262b31;
+            border: 1px solid #3a424c;
+            border-radius: 6px;
+            color: #d7dce1;
+            padding: 2px 8px;
+            min-height: 22px;
+        }
+        QToolButton#treeActionButton:hover {
+            background: #2d333a;
+            border-color: #4b5561;
+        }
+        QToolButton#treeActionButton:disabled {
+            color: #7c858e;
+            border-color: #343a42;
+        }
+        QTreeWidget#projectFileTree {
+            background: #1b1f24;
+            alternate-background-color: #20252b;
+            border: 1px solid #313740;
+            border-radius: 7px;
+            color: #e3e6ea;
+            padding: 4px;
+        }
+        QTreeWidget#projectFileTree::item {
+            padding: 4px 2px;
+        }
+        QPlainTextEdit#workspaceMtexEditor {
+            background: #1d2228;
+            border: 1px solid #414955;
+            border-radius: 7px;
+            padding: 8px 10px;
+        }
+        QSplitter::handle {
+            background: transparent;
+        }
+        QSplitter::handle:horizontal {
+            width: 10px;
+        }
+        """
+
+    def _create_panel_frame(
+        self,
+        title: str,
+        subtitle: str,
+        *,
+        variant: str = "default",
+    ) -> tuple[QtWidgets.QFrame, QtWidgets.QVBoxLayout, QtWidgets.QHBoxLayout]:
+        frame = QtWidgets.QFrame()
+        object_name = {
+            "muted": "workspacePanelMuted",
+            "primary": "workspacePanelPrimary",
+        }.get(variant, "workspacePanel")
+        frame.setObjectName(object_name)
+        container_layout = QtWidgets.QVBoxLayout(frame)
+        container_layout.setContentsMargins(
+            WORKSPACE_PANEL_PADDING,
+            WORKSPACE_PANEL_PADDING,
+            WORKSPACE_PANEL_PADDING,
+            WORKSPACE_PANEL_PADDING,
+        )
+        container_layout.setSpacing(WORKSPACE_SECTION_SPACING)
+
+        header = QtWidgets.QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(WORKSPACE_SECTION_SPACING)
+        title_layout = QtWidgets.QVBoxLayout()
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(2)
+        title_label = QtWidgets.QLabel(title)
+        title_label.setObjectName("panelTitle")
+        subtitle_label = QtWidgets.QLabel(subtitle)
+        subtitle_label.setObjectName("panelSubtitle")
+        title_layout.addWidget(title_label)
+        title_layout.addWidget(subtitle_label)
+        header.addLayout(title_layout, 1)
+
+        header_actions = QtWidgets.QHBoxLayout()
+        header_actions.setContentsMargins(0, 0, 0, 0)
+        header_actions.setSpacing(WORKSPACE_ROW_SPACING)
+        header.addLayout(header_actions)
+        container_layout.addLayout(header)
+
+        body_layout = QtWidgets.QVBoxLayout()
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(WORKSPACE_SECTION_SPACING)
+        container_layout.addLayout(body_layout, 1)
+        return frame, body_layout, header_actions
+
+    def _splitter_default_sizes(self, total_width: int) -> list[int]:
+        minimums = [
+            WORKSPACE_LEFT_MIN_WIDTH,
+            WORKSPACE_EDITOR_MIN_WIDTH,
+            WORKSPACE_PREVIEW_MIN_WIDTH,
+        ]
+        weights = list(WORKSPACE_DEFAULT_SPLITTER_WEIGHTS)
+        base_width = max(total_width, sum(minimums))
+        sizes = [max(int(base_width * weight / sum(weights)), minimum) for weight, minimum in zip(weights, minimums)]
+        overflow = sum(sizes) - base_width
+        if overflow > 0:
+            for index in sorted(range(len(sizes)), key=lambda i: sizes[i] - minimums[i], reverse=True):
+                reducible = max(0, sizes[index] - minimums[index])
+                if reducible <= 0:
+                    continue
+                shrink = min(reducible, overflow)
+                sizes[index] -= shrink
+                overflow -= shrink
+                if overflow <= 0:
+                    break
+        leftover = max(0, total_width - sum(sizes))
+        if leftover > 0:
+            preview_bonus = max(1, int(leftover * 0.55))
+            sizes[2] += preview_bonus
+            sizes[1] += leftover - preview_bonus
+        return sizes
+
+    def _apply_default_splitter_sizes(self) -> None:
+        if self._splitter_defaults_applied or self._workspace_splitter is None:
+            return
+        total_width = self._workspace_splitter.size().width()
+        if total_width <= 0:
+            return
+        self._workspace_splitter.setSizes(self._splitter_default_sizes(total_width))
+        self._splitter_defaults_applied = True
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        QtCore.QTimer.singleShot(0, self._apply_default_splitter_sizes)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        if not self._splitter_defaults_applied and self.isVisible():
+            self._apply_default_splitter_sizes()
+
     def _populate_children(self, item: QtWidgets.QTreeWidgetItem, path: Path) -> None:
         try:
             entries = sorted(
@@ -403,11 +654,11 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
 
     def _make_tree_action_button(self, text: str, tooltip: str) -> QtWidgets.QToolButton:
         button = QtWidgets.QToolButton()
+        button.setObjectName("treeActionButton")
         button.setText(text)
         button.setToolTip(tooltip)
         button.setAutoRaise(False)
         button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        button.setStyleSheet("QToolButton { padding: 3px 8px; }")
         return button
 
     def _update_tree_actions_enabled(self) -> None:
