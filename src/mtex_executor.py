@@ -8,6 +8,7 @@ import platform
 from dataclasses import dataclass
 from pathlib import Path
 
+import latex_lang as runtime_lang
 from diagnostics import (
     diagnostic_line_offset,
     make_build_diagnostic,
@@ -206,6 +207,32 @@ def _resolve_var_reference(ref, contexto):
 # === REEMPLAZO AUTOMÃTICO DE VARIABLES ======================
 # ============================================================
 
+def _evaluate_expr_reference(expr, contexto):
+    expr_text = expr.strip()
+    if not expr_text:
+        raise ValueError("expresion vacia")
+
+    active_context = runtime_lang.env_ast if contexto is None else contexto
+    runtime_env = runtime_lang.env_ast
+    restore_snapshot = None
+
+    if active_context is not runtime_env:
+        restore_snapshot = dict(runtime_env)
+        runtime_env.clear()
+        runtime_env.update(active_context)
+
+    try:
+        ctx = runtime_lang._build_parser_context()
+        ctx.env_ast = active_context
+        expr_py = runtime_lang._oct_expr_to_python(expr_text, ctx)
+        scope = ctx.eval_context({"env_ast": active_context})
+        return eval(expr_py, {"__builtins__": __builtins__}, scope)
+    finally:
+        if restore_snapshot is not None:
+            runtime_env.clear()
+            runtime_env.update(restore_snapshot)
+
+
 def reemplazar_vars(texto, contexto):
     """Reemplaza \var{nombre} con su valor LaTeX en el texto."""
     contexto = contexto or {}
@@ -224,6 +251,22 @@ def reemplazar_vars(texto, contexto):
             return _latex_message(f"Error var {var}: {e}")
 
     return re.sub(r"\\var\{([^{}]+)\}", repl, texto)
+
+
+def reemplazar_exprs(texto, contexto):
+    r"""Reemplaza \expr{expresion} evaluando expresiones MathTeX en el contexto actual."""
+    contexto = contexto or {}
+
+    def repl(m):
+        expr = m.group(1)
+        try:
+            resolved = _evaluate_expr_reference(expr, contexto)
+            return expr_to_latex(resolved)
+        except Exception as e:
+            return _latex_message(f"Error expr {expr}: {e}")
+
+    return re.sub(r"\\expr\{([^{}]+)\}", repl, texto)
+
 
 def reemplazar_plots(texto, contexto=None):
     def repl(m):
@@ -667,6 +710,7 @@ def ejecutar_mtex(
         dentro = not dentro
 
     salida_tex = "".join(salida_parts)
+    salida_tex = reemplazar_exprs(salida_tex, contexto)
     salida_tex = reemplazar_vars(salida_tex, contexto)
     salida_tex = reemplazar_plots(salida_tex, contexto)
     salida_tex, missing_table = reemplazar_tablas(salida_tex, contexto)
