@@ -17,6 +17,7 @@ With MathTeX, you can:
 - write calculation scripts in `.mtx` files
 - create executable LaTeX documents in `.mtex`
 - insert computed values with `\var{...}`
+- insert computed expressions with `\expr{...}`
 - insert generated plots with `\plot{...}`
 - insert generated tables with `\table{...}`
 - compile the final document to PDF
