@@ -2315,10 +2315,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self._refresh_menu_bar_for_active_context()
 
     def _update_window_title(self) -> None:
-        if self.current_project is None:
-            self.setWindowTitle("MathTeX")
-            return
-        self.setWindowTitle(f"MathTeX - {self.current_project.name}")
+        self.setWindowTitle("MathTeX")
 
     def _project_root_dir(self) -> Path | None:
         if self.current_project is None:

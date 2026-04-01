@@ -22,6 +22,152 @@ class PreviewState:
     vertical_scroll: int = 0
 
 
+class InteractivePdfView(QtPdfWidgets.QPdfView):  # type: ignore[misc]
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._link_model = QtPdf.QPdfLinkModel(self)
+        self.setMouseTracking(True)
+        self.viewport().setMouseTracking(True)
+
+    def setDocument(self, document) -> None:  # noqa: N802
+        super().setDocument(document)
+        if document is not None:
+            self._link_model.setDocument(document)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802
+        self.unsetCursor()
+        super().leaveEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        link = self._link_at_view_position(event.position())
+        self.setCursor(
+            QtCore.Qt.CursorShape.PointingHandCursor if link.isValid() else QtCore.Qt.CursorShape.ArrowCursor
+        )
+        event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        if event.button() != QtCore.Qt.MouseButton.LeftButton:
+            super().mouseReleaseEvent(event)
+            return
+        link = self._link_at_view_position(event.position())
+        if not link.isValid():
+            super().mouseReleaseEvent(event)
+            return
+        if self._activate_link(link):
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def _activate_link(self, link: QtPdf.QPdfLink) -> bool:
+        url = link.url()
+        if url.isValid() and not url.isEmpty():
+            return self._open_external_url(url)
+        if link.page() >= 0:
+            self._jump_to_internal_destination(link)
+            return True
+        return False
+
+    def _open_external_url(self, url: QtCore.QUrl) -> bool:
+        return QtGui.QDesktopServices.openUrl(url)
+
+    def _jump_to_internal_destination(self, link: QtPdf.QPdfLink) -> None:
+        self.pageNavigator().jump(link.page(), link.location(), link.zoom())
+
+    def _link_at_view_position(self, position: QtCore.QPointF) -> QtPdf.QPdfLink:
+        document = self.document()
+        if document is None or document.status() != QtPdf.QPdfDocument.Status.Ready:
+            return QtPdf.QPdfLink()
+        viewport_rect = self._viewport_rect()
+        for page, page_geometry, page_scale in self._iter_page_geometries(document, viewport_rect):
+            visible_page_geometry = page_geometry.translated(-viewport_rect.topLeft())
+            if not visible_page_geometry.contains(position.toPoint()):
+                continue
+            screen_inv_transform, invertible = self._screen_scale_transform(page_scale).inverted()
+            if not invertible:
+                return QtPdf.QPdfLink()
+            pos_in_points = screen_inv_transform.map(position - QtCore.QPointF(visible_page_geometry.topLeft()))
+            self._link_model.setPage(page)
+            return self._link_model.linkAt(pos_in_points)
+        return QtPdf.QPdfLink()
+
+    def _viewport_rect(self) -> QtCore.QRect:
+        return QtCore.QRect(
+            self.horizontalScrollBar().value(),
+            self.verticalScrollBar().value(),
+            self.viewport().width(),
+            self.viewport().height(),
+        )
+
+    def _iter_page_geometries(self, document, viewport_rect: QtCore.QRect):
+        page_count = int(document.pageCount())
+        if page_count <= 0:
+            return
+
+        zoom_mode = self.zoomMode()
+        zoom_factor = float(self.zoomFactor() or 1.0)
+        margins = self.documentMargins()
+        page_spacing = int(self.pageSpacing())
+        screen_resolution = self._screen_resolution()
+
+        if self.pageMode() == QtPdfWidgets.QPdfView.PageMode.SinglePage:
+            start_page = min(max(self.pageNavigator().currentPage(), 0), max(0, page_count - 1))
+            end_page = start_page + 1
+        else:
+            start_page = 0
+            end_page = page_count
+
+        page_layouts: list[tuple[int, QtCore.QSize, float]] = []
+        total_width = 0
+        for page in range(start_page, end_page):
+            page_size = document.pagePointSize(page)
+            base_size = QtCore.QSizeF(
+                page_size.width() * screen_resolution,
+                page_size.height() * screen_resolution,
+            ).toSize()
+            page_scale = zoom_factor
+            if zoom_mode == QtPdfWidgets.QPdfView.ZoomMode.Custom:
+                render_size = QtCore.QSizeF(
+                    base_size.width() * zoom_factor,
+                    base_size.height() * zoom_factor,
+                ).toSize()
+            elif zoom_mode == QtPdfWidgets.QPdfView.ZoomMode.FitToWidth:
+                available_width = max(1, viewport_rect.width() - margins.left() - margins.right())
+                width = max(1, base_size.width())
+                page_scale = float(available_width) / float(width)
+                render_size = QtCore.QSizeF(
+                    base_size.width() * page_scale,
+                    base_size.height() * page_scale,
+                ).toSize()
+            else:
+                available_size = viewport_rect.size() + QtCore.QSize(
+                    -margins.left() - margins.right(),
+                    -page_spacing,
+                )
+                available_size.setWidth(max(1, available_size.width()))
+                available_size.setHeight(max(1, available_size.height()))
+                render_size = base_size.scaled(available_size, QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+                width = max(1, base_size.width())
+                page_scale = float(render_size.width()) / float(width)
+            total_width = max(total_width, render_size.width())
+            page_layouts.append((page, render_size, page_scale))
+
+        total_width += margins.left() + margins.right()
+        page_y = margins.top()
+        for page, render_size, page_scale in page_layouts:
+            page_x = (max(total_width, viewport_rect.width()) - render_size.width()) // 2
+            yield page, QtCore.QRect(QtCore.QPoint(page_x, page_y), render_size), page_scale
+            page_y += render_size.height() + page_spacing
+
+    def _screen_scale_transform(self, page_scale: float) -> QtGui.QTransform:
+        return QtGui.QTransform.fromScale(self._screen_resolution() * page_scale, self._screen_resolution() * page_scale)
+
+    def _screen_resolution(self) -> float:
+        screen = self.windowHandle().screen() if self.windowHandle() else QtGui.QGuiApplication.primaryScreen()
+        if screen is None:
+            return 96.0 / 72.0
+        return float(screen.logicalDotsPerInch()) / 72.0
+
+
 class PdfPreviewWidget(QtWidgets.QWidget):  # type: ignore[misc]
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -120,7 +266,7 @@ class PdfPreviewWidget(QtWidgets.QWidget):  # type: ignore[misc]
             f"background: {PREVIEW_BG}; color: #f2f2f2; border: 1px solid #3c3c3c; border-radius: 6px;"
         )
 
-        self._view = QtPdfWidgets.QPdfView(self)
+        self._view = InteractivePdfView(self)
         self._view.setPageMode(QtPdfWidgets.QPdfView.PageMode.MultiPage)
         self._view.setZoomMode(QtPdfWidgets.QPdfView.ZoomMode.FitToWidth)
         self._view.setStyleSheet(f"background: {PREVIEW_BG}; border: 1px solid #3c3c3c; border-radius: 6px;")
