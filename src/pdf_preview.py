@@ -304,6 +304,24 @@ class PdfPreviewWidget(QtWidgets.QWidget):  # type: ignore[misc]
     def current_pdf_path(self) -> Path | None:
         return self._current_pdf_path
 
+    def current_page_index(self) -> int | None:
+        current_page = self._current_page_number()
+        if current_page <= 0:
+            return None
+        return current_page - 1
+
+    def jump_to_page_index(self, page_index: int) -> bool:
+        total = self._document_page_count()
+        if total <= 0 or not self._document_is_ready():
+            return False
+        clamped_page = min(max(int(page_index), 0), total - 1)
+        if self.current_page_index() == clamped_page:
+            self._update_page_label()
+            return True
+        self._view.pageNavigator().jump(clamped_page, QtCore.QPointF(), self._jump_zoom_value())
+        self._update_page_label()
+        return True
+
     def set_message(self, text: str) -> None:
         self._pending_restore_state = None
         self._current_pdf_path = None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from PySide6 import QtCore
 
 from pdf_preview import PdfPreviewWidget
 
@@ -133,3 +134,71 @@ def test_typed_page_waits_for_confirmation_and_is_not_overwritten_by_scroll(
 
     assert navigations == [6]
     assert preview_widget.page_input.text() == "6"
+
+
+class _FakeLink:
+    def __init__(
+        self,
+        *,
+        url: str = "",
+        page: int = -1,
+        location: QtCore.QPointF | None = None,
+        zoom: float = 0.0,
+    ) -> None:
+        self._url = QtCore.QUrl(url)
+        self._page = page
+        self._location = location or QtCore.QPointF()
+        self._zoom = zoom
+
+    def url(self) -> QtCore.QUrl:
+        return self._url
+
+    def page(self) -> int:
+        return self._page
+
+    def location(self) -> QtCore.QPointF:
+        return self._location
+
+    def zoom(self) -> float:
+        return self._zoom
+
+
+def test_external_links_use_desktop_services(
+    preview_widget: PdfPreviewWidget,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opened_urls: list[str] = []
+    internal_jumps: list[_FakeLink] = []
+    link = _FakeLink(url="https://example.com/docs")
+
+    monkeypatch.setattr(preview_widget._view, "_open_external_url", lambda url: opened_urls.append(url.toString()) or True)
+    monkeypatch.setattr(
+        preview_widget._view,
+        "_jump_to_internal_destination",
+        lambda dest: internal_jumps.append(dest),
+    )
+
+    assert preview_widget._view._activate_link(link) is True
+    assert opened_urls == ["https://example.com/docs"]
+    assert internal_jumps == []
+
+
+def test_internal_links_jump_within_the_embedded_preview(
+    preview_widget: PdfPreviewWidget,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opened_urls: list[str] = []
+    internal_jumps: list[tuple[int, QtCore.QPointF, float]] = []
+    location = QtCore.QPointF(24.0, 72.0)
+    link = _FakeLink(page=4, location=location, zoom=1.5)
+
+    monkeypatch.setattr(preview_widget._view, "_open_external_url", lambda url: opened_urls.append(url.toString()) or True)
+    monkeypatch.setattr(
+        preview_widget._view,
+        "_jump_to_internal_destination",
+        lambda dest: internal_jumps.append((dest.page(), dest.location(), dest.zoom())),
+    )
+
+    assert preview_widget._view._activate_link(link) is True
+    assert opened_urls == []
+    assert internal_jumps == [(4, location, 1.5)]

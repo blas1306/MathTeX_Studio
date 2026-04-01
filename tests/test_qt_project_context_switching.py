@@ -86,3 +86,13 @@ def test_compile_guides_user_when_active_project_file_is_mtx(
         "Open .mtx scripts in the Interactive Editor and use Run All instead."
     ]
 
+
+def test_window_title_stays_constant_when_project_is_open(studio_window, qapp) -> None:
+    window, project = studio_window
+
+    window.current_project = project
+    window._update_window_title()
+    qapp.processEvents()
+
+    assert window.windowTitle() == "MathTeX"
+

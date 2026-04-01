@@ -206,6 +206,28 @@ def test_matrix_placeholders_do_not_auto_add_amsmath_package(tmp_path: Path):
     assert r"\usepackage{amsmath}" not in generated_tex
 
 
+def test_expr_placeholder_evaluates_codeblock_functions_and_vectors(tmp_path: Path):
+    source = _write_mtex(
+        tmp_path,
+        "expr_doc.mtex",
+        "\\documentclass{article}\n"
+        "\\begin{document}\n"
+        "\\codeblock\n"
+        "f1(x) = x^2;\n"
+        "b = [5; 6];\n"
+        "\\endcodeblock\n"
+        "E=\\expr{f1(2) + b(1)}\n"
+        "\\end{document}\n",
+    )
+
+    with patch("mtex_executor._run_pdflatex", side_effect=_successful_pdflatex()):
+        ejecutar_mtex(str(source), env_ast, abrir_pdf=False, build_dir=tmp_path / "build")
+
+    generated_tex = (tmp_path / "build" / "expr_doc.tex").read_text(encoding="utf-8")
+
+    assert "E=9" in generated_tex
+
+
 def test_mtex_build_failure_reports_error_cleanly(tmp_path: Path):
     source = _write_mtex(
         tmp_path,

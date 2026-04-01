@@ -17,6 +17,7 @@ from app_preferences import AppPreferences, AppPreferencesStore
 from autocomplete_engine import AutocompleteMatch, AutocompleteRequest, build_autocomplete_suggestions, detect_autocomplete_match
 from command_catalog import CommandSuggestion
 from diagnostics import diagnostic_line_offset
+from editor_pdf_sync import EditorPdfSyncMap
 from latex_lang import (
     env_ast,
     ejecutar_linea,
@@ -94,6 +95,7 @@ CODE_BLOCK_MARKER_PATTERN = re.compile(r"\\begin\{code\}|\\end\{code\}|\\codeblo
 
 QT_AVAILABLE = True
 AUTO_COMPILE_DEBOUNCE_MS = 900
+EDITOR_PDF_SYNC_DEBOUNCE_MS = 350
 INTERACTIVE_MENU_CONTEXT = "interactive"
 STUDIO_MENU_CONTEXT = "studio"
 SNIPPET_CURSOR_MARKER = "<|cursor|>"
@@ -1015,6 +1017,13 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self._auto_compile_timer.setSingleShot(True)
         self._auto_compile_timer.setInterval(AUTO_COMPILE_DEBOUNCE_MS)
         self._auto_compile_timer.timeout.connect(self.trigger_auto_build)
+        self._editor_pdf_sync = EditorPdfSyncMap()
+        self._editor_pdf_sync_timer = QtCore.QTimer(self)
+        self._editor_pdf_sync_timer.setSingleShot(True)
+        self._editor_pdf_sync_timer.setInterval(EDITOR_PDF_SYNC_DEBOUNCE_MS)
+        self._editor_pdf_sync_timer.timeout.connect(self._sync_editor_position_to_preview)
+        self._last_structural_cursor_signature: tuple[int, str, str] | None = None
+        self._last_synced_cursor_signature: tuple[int, str, str] | None = None
         self.console_dock: QtWidgets.QDockWidget | None = None
         self.console_toggle_btn: QtWidgets.QPushButton | None = None
         self.console_restore_btn: QtWidgets.QPushButton | None = None
@@ -1156,6 +1165,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             "studio_save_mtex_as": self._make_menu_action("Save As...", self._save_mtex_file_as, shortcut="Ctrl+Shift+S"),
             "studio_show_project_files": self._make_menu_action("Show Project Files", self._focus_project_files_panel),
             "studio_show_preview": self._make_menu_action("Show PDF Preview", self._focus_pdf_preview_panel),
+            "studio_reveal_in_preview": self._make_menu_action("Reveal in Preview", self._reveal_current_editor_position_in_preview),
             "studio_show_logs": self._make_menu_action("Show Logs & Output Files", self._show_logs_output_widget),
             "studio_refresh_tree": self._make_menu_action("Refresh File Tree", self._refresh_mtex_file_tree),
             "studio_compile": self._make_menu_action(
@@ -1347,6 +1357,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             [
                 "studio_show_project_files",
                 "studio_show_preview",
+                "studio_reveal_in_preview",
                 "studio_show_logs",
                 None,
                 "studio_refresh_tree",
@@ -1425,6 +1436,13 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         actions["studio_save_mtex_as"].setEnabled(studio_context_active and studio_workspace_active and self.mtex_editor is not None)
         actions["studio_show_project_files"].setEnabled(studio_context_active and studio_workspace_active and self.mtex_file_tree is not None)
         actions["studio_show_preview"].setEnabled(studio_context_active and studio_workspace_active and self.preview is not None)
+        actions["studio_reveal_in_preview"].setEnabled(
+            studio_context_active
+            and studio_workspace_active
+            and self.mtex_editor is not None
+            and self.preview is not None
+            and self.preview.current_pdf_path() is not None
+        )
         actions["studio_show_logs"].setEnabled(studio_context_active and has_logs_or_project)
         actions["studio_refresh_tree"].setEnabled(studio_context_active and has_project)
         actions["studio_compile"].setEnabled(studio_context_active and has_project)
@@ -1643,6 +1661,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self.project_workspace_widget.file_open_requested.connect(self._handle_project_file_activation)
         self.mtex_editor.modificationChanged.connect(lambda changed: self._update_mtex_dirty(changed))
         self.mtex_editor.textChanged.connect(self._on_active_mtex_text_changed)
+        self.mtex_editor.cursorPositionChanged.connect(self._on_mtex_cursor_position_changed)
         if self.auto_compile_checkbox is not None:
             self.auto_compile_checkbox.toggled.connect(self._set_auto_compile_enabled)
 
@@ -2174,6 +2193,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         return True
 
     def _on_active_mtex_text_changed(self) -> None:
+        self._refresh_editor_pdf_sync_source()
         if self._ignore_mtex_text_changes or not self._is_auto_compile_target_active():
             return
         self.schedule_auto_build()
@@ -2215,6 +2235,10 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         if not self._is_studio_workspace_active() or self.preview is None:
             return
         self.preview.setFocus()
+
+    def _reveal_current_editor_position_in_preview(self) -> None:
+        self._sync_editor_position_to_preview(force=True)
+        self._focus_pdf_preview_panel()
 
     def _toggle_auto_compile_from_menu(self) -> None:
         if self.auto_compile_checkbox is None or not self._is_studio_workspace_active():
@@ -2417,6 +2441,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         if not self._can_leave_project_workspace():
             return
         self._reset_auto_compile_runtime()
+        self._clear_editor_pdf_sync_state()
         self.current_project = project
         self.project_registry.add_project(project)
         self.project_registry.save()
@@ -2436,6 +2461,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         if not self._can_leave_project_workspace():
             return
         self._reset_auto_compile_runtime()
+        self._clear_editor_pdf_sync_state()
         self.current_project = None
         self.current_mtex_path = None
         self.last_generated_pdf = None
@@ -2539,6 +2565,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             return
         self._auto_compile_timer.stop()
         self.auto_compile_controller.clear_pending_auto_rebuild()
+        self._editor_pdf_sync_timer.stop()
         self._ignore_mtex_text_changes = True
         try:
             self.mtex_editor.setPlainText(content)
@@ -2546,11 +2573,15 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             self.current_mtex_path = path
             if self.mtex_file_label is not None:
                 self.mtex_file_label.setText(path.name)
+            self._refresh_editor_pdf_sync_source(reset_cursor_signature=True)
             existing_pdf = self._derive_output_pdf_path(path)
             if existing_pdf.exists():
                 self._load_pdf_preview(existing_pdf)
+                self._refresh_editor_pdf_sync_artifacts(path)
             else:
                 self.last_generated_pdf = None
+                self._editor_pdf_sync.update_compiled_landmarks(toc_path=None, aux_path=None)
+                self._last_synced_cursor_signature = None
                 self.preview.set_message("Compile to refresh the preview.")
         finally:
             self._ignore_mtex_text_changes = False
@@ -2692,6 +2723,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         if success and generated_pdf_path is not None:
             collector.add_entry(f"{trigger_label} finished successfully. PDF updated: {generated_pdf_path}", source="app")
             self._load_pdf_preview(generated_pdf_path)
+            self._refresh_editor_pdf_sync_artifacts(path)
             self._set_build_status(f"Build: {status_prefix} succeeded", tone="success")
         else:
             latex_summary = summarize_latex_build_failure(artifacts.compile_log_path)
@@ -2719,6 +2751,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             elif self.preview is not None:
                 self.preview.set_message("Compilation failed. No PDF is available yet. Check the console output.")
             if kept_previous_pdf:
+                self._refresh_editor_pdf_sync_artifacts(path)
                 self._set_build_status(
                     f"Build: {status_prefix} failed, showing last valid PDF",
                     tone="warning",
@@ -2973,6 +3006,77 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
 
         self._plot_windows.append(window)
         window.destroyed.connect(lambda *_: self._plot_windows.remove(window) if window in self._plot_windows else None)
+
+    def _clear_editor_pdf_sync_state(self) -> None:
+        self._editor_pdf_sync_timer.stop()
+        self._editor_pdf_sync.clear()
+        self._last_structural_cursor_signature = None
+        self._last_synced_cursor_signature = None
+
+    def _refresh_editor_pdf_sync_source(self, *, reset_cursor_signature: bool = False) -> None:
+        if self.mtex_editor is None:
+            self._editor_pdf_sync.update_source("")
+            self._last_structural_cursor_signature = None
+            self._last_synced_cursor_signature = None
+            return
+        self._editor_pdf_sync.update_source(self.mtex_editor.toPlainText())
+        if reset_cursor_signature:
+            self._last_structural_cursor_signature = None
+            self._last_synced_cursor_signature = None
+
+    def _refresh_editor_pdf_sync_artifacts(self, source_path: Path | None) -> None:
+        if source_path is None:
+            self._editor_pdf_sync.update_compiled_landmarks(toc_path=None, aux_path=None)
+            self._last_synced_cursor_signature = None
+            return
+        artifacts = self._build_artifacts_for_source(source_path)
+        # Prefer compiled TOC/AUX data over PDF text heuristics in this first stage.
+        self._editor_pdf_sync.update_compiled_landmarks(
+            toc_path=artifacts.toc_path,
+            aux_path=artifacts.aux_path,
+        )
+        self._last_synced_cursor_signature = None
+
+    def _current_mtex_cursor_line(self) -> int | None:
+        if self.mtex_editor is None:
+            return None
+        return self.mtex_editor.textCursor().blockNumber() + 1
+
+    def _on_mtex_cursor_position_changed(self) -> None:
+        if self._ignore_mtex_text_changes or not self._is_studio_workspace_active():
+            return
+        line_number = self._current_mtex_cursor_line()
+        if line_number is None:
+            return
+        landmark = self._editor_pdf_sync.current_landmark_for_line(line_number)
+        signature = landmark.signature if landmark is not None else None
+        if signature == self._last_structural_cursor_signature:
+            return
+        self._last_structural_cursor_signature = signature
+        self._editor_pdf_sync_timer.stop()
+        if signature is not None:
+            self._editor_pdf_sync_timer.start()
+
+    def _sync_editor_position_to_preview(self, *, force: bool = False) -> None:
+        if not self._is_studio_workspace_active() or self.preview is None:
+            return
+        if self.preview.current_pdf_path() is None:
+            return
+        line_number = self._current_mtex_cursor_line()
+        if line_number is None:
+            return
+        target = self._editor_pdf_sync.resolve_target_for_line(line_number)
+        if target is None:
+            return
+        signature = target.landmark.signature
+        current_page = self.preview.current_page_index()
+        if not force and signature == self._last_synced_cursor_signature and current_page == target.page_index:
+            return
+        if current_page == target.page_index:
+            self._last_synced_cursor_signature = signature
+            return
+        if self.preview.jump_to_page_index(target.page_index):
+            self._last_synced_cursor_signature = signature
 
     # ----- Eventos --------------------------------------------------------
     def closeEvent(self, event) -> None:  # noqa: N802
