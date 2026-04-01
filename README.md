@@ -91,6 +91,7 @@ f(x) = x.^2 - 2;
 - executable LaTeX documents with `.mtex`
 - automatic PDF generation through `pdflatex`
 - inline value injection with `\var{...}`
+- insert computed expressions with `\expr{...}`
 - named plot generation and insertion with `\plot{...}`
 - named table generation and insertion with `\table{...}`
 - matrix and element-wise operations
