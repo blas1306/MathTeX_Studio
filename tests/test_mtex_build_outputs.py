@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 
+from editor_pdf_sync import load_trace_artifact
 from latex_lang import env_ast
 from mtex_executor import ejecutar_mtex
 from project_outputs import BUILD_DIRNAME, COMPILE_LOG_FILENAME, ProjectOutputManager
@@ -36,6 +37,7 @@ class ProjectOutputManagerTests(unittest.TestCase):
         self.assertEqual(artifacts.build_dir, project_root / BUILD_DIRNAME)
         self.assertEqual(artifacts.tex_path, project_root / BUILD_DIRNAME / "DemoProject.tex")
         self.assertEqual(artifacts.pdf_path, project_root / BUILD_DIRNAME / "DemoProject.pdf")
+        self.assertEqual(artifacts.trace_path, project_root / BUILD_DIRNAME / "DemoProject.mtextrace.json")
         self.assertEqual(artifacts.compile_log_path, project_root / BUILD_DIRNAME / COMPILE_LOG_FILENAME)
 
 
@@ -57,7 +59,7 @@ class EjecutarMtexBuildOutputTests(unittest.TestCase):
         shutil.rmtree(self.root, ignore_errors=True)
 
     def test_ejecutar_mtex_writes_outputs_to_build_dir(self) -> None:
-        calls: list[tuple[str, str, bool, str | None]] = []
+        calls: list[tuple[str, str, bool, str | None, bool]] = []
 
         def _fake_pdflatex(
             tex_filename: str,
@@ -66,13 +68,14 @@ class EjecutarMtexBuildOutputTests(unittest.TestCase):
             output_dir: str | None = None,
             synctex: bool = False,
         ):
-            del synctex
-            calls.append((tex_filename, cwd, draftmode, output_dir))
+            calls.append((tex_filename, cwd, draftmode, output_dir, synctex))
             target_dir = Path(output_dir or cwd)
             target_dir.mkdir(parents=True, exist_ok=True)
             (target_dir / f"{self.project_root.name}.log").write_text("Compilation finished.\n", encoding="utf-8")
             if not draftmode:
                 (target_dir / f"{self.project_root.name}.pdf").write_bytes(b"%PDF-1.4\n%mock\n")
+                if synctex:
+                    (target_dir / f"{self.project_root.name}.synctex.gz").write_bytes(b"synctex")
 
             class _Result:
                 returncode = 0
@@ -91,12 +94,20 @@ class EjecutarMtexBuildOutputTests(unittest.TestCase):
         self.assertEqual(Path(generated_pdf), self.build_dir / f"{self.project_root.name}.pdf")
         self.assertTrue((self.build_dir / f"{self.project_root.name}.tex").exists())
         self.assertTrue((self.build_dir / f"{self.project_root.name}.pdf").exists())
+        self.assertTrue((self.build_dir / f"{self.project_root.name}.synctex.gz").exists())
+        self.assertTrue((self.build_dir / f"{self.project_root.name}.mtextrace.json").exists())
         self.assertTrue((self.build_dir / COMPILE_LOG_FILENAME).exists())
         self.assertFalse((self.project_root / "main.tex").exists())
         self.assertFalse((self.project_root / "main.pdf").exists())
         self.assertTrue(calls)
         self.assertEqual(Path(calls[0][1]), self.project_root)
         self.assertEqual(Path(calls[0][3]), self.build_dir.resolve())
+        self.assertTrue(all(call[4] is True for call in calls))
+        trace_artifact = load_trace_artifact(self.build_dir / f"{self.project_root.name}.mtextrace.json")
+        self.assertIsNotNone(trace_artifact)
+        assert trace_artifact is not None
+        self.assertTrue(trace_artifact.synctex_enabled)
+        self.assertGreaterEqual(len(trace_artifact.spans), 1)
 
 
 if __name__ == "__main__":

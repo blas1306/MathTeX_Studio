@@ -4229,7 +4229,7 @@ register_shared_symbols(COMMON_SYMBOLS, PARSER_LOCAL_DICT, {"N": _mat_null})
 
 
 def _build_parser_context() -> ParserContext:
-    return ParserContext(
+    ctx = ParserContext(
         env_ast=env_ast,
         greek_symbols=greek_symbols,
         greek_display=greek_display,
@@ -4243,6 +4243,8 @@ def _build_parser_context() -> ParserContext:
         nr_func=NR,
         run_line=ejecutar_linea,
     )
+    ctx.expr_to_python = lambda expr: _oct_expr_to_python(expr, ctx)
+    return ctx
 
 
 def _sync_scope_to_env(scope: dict, ctx: ParserContext) -> None:

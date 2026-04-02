@@ -15,6 +15,7 @@ class ParserContext:
     user_inners: Dict[str, Any]
     latex_to_python: Callable[[str], str]
     common_symbols: Dict[str, Any]
+    expr_to_python: Optional[Callable[[str], str]] = None
     plot_func: Optional[Callable[..., Any]] = None
     plot_backend: Optional[Any] = None
     plot3_func: Optional[Callable[..., Any]] = None

@@ -233,6 +233,7 @@ def handle_functions(linea: str, ctx: ParserContext) -> bool:
     """Procesa comandos relacionados con funciones, derivadas y gráficos."""
     env_ast = ctx.env_ast
     latex_to_python = ctx.latex_to_python
+    expr_to_python = ctx.expr_to_python or latex_to_python
     greek_display = ctx.greek_display
     x_sym = ctx.common_symbols.get("x")
 
@@ -660,7 +661,7 @@ def handle_functions(linea: str, ctx: ParserContext) -> bool:
             return False
         if fname not in env_ast:
             try:
-                res_generic = eval(latex_to_python(linea), ctx.eval_context())
+                res_generic = eval(expr_to_python(linea), ctx.eval_context())
                 s_generic = str(res_generic)
                 for g, symb in greek_display.items():
                     s_generic = re.sub(rf"\b{g}\b", symb, s_generic)
@@ -674,7 +675,7 @@ def handle_functions(linea: str, ctx: ParserContext) -> bool:
 
         f_expr = env_ast[fname]
         vars_info = env_ast.get(f"{fname}_vars", [x_sym])
-        args = [a.strip() for a in args_str.split(",") if a.strip()]
+        args = _split_args(args_str)
         if len(args) != len(vars_info) and not (len(args) == 1 and len(vars_info) > 1):
             print(f"Error: function {fname} expects {len(vars_info)} argument(s).")
             return True
@@ -684,7 +685,7 @@ def handle_functions(linea: str, ctx: ParserContext) -> bool:
             arg_exprs: List[Any] = []
             for a in args:
                 try:
-                    val = eval(latex_to_python(a), contexto_eval)
+                    val = eval(expr_to_python(a), contexto_eval)
                 except Exception:
                     val = symbols(a)
                 arg_exprs.append(val)

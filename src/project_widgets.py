@@ -188,6 +188,7 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
         self._project_manager = project_manager or ProjectManager()
         self._workspace_splitter: QtWidgets.QSplitter | None = None
         self._splitter_defaults_applied = False
+        self._sync_actions: list[QtGui.QAction] = []
         self.setStyleSheet(self._workspace_stylesheet())
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -235,6 +236,12 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
         self.auto_compile_checkbox.setChecked(False)
         self.auto_compile_checkbox.setToolTip("Automatically compile the active .mtex document after a short pause.")
         self.logs_output_btn = QtWidgets.QPushButton("Logs & Output Files")
+        self.sync_menu_btn = QtWidgets.QToolButton()
+        self.sync_menu_btn.setObjectName("workspaceSyncButton")
+        self.sync_menu_btn.setText("Sync")
+        self.sync_menu_btn.setToolTip("Jump between the editor and the compiled PDF")
+        self.sync_menu_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.sync_menu_btn.setEnabled(False)
         self.build_status_label = QtWidgets.QLabel()
         self.build_status_label.setMinimumWidth(240)
         self.build_status_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -255,6 +262,7 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
         toolbar.addWidget(self.compile_btn)
         toolbar.addWidget(self.auto_compile_checkbox)
         toolbar.addWidget(self.logs_output_btn)
+        toolbar.addWidget(self.sync_menu_btn)
         toolbar.addStretch()
         toolbar.addWidget(self.build_status_label)
         toolbar.addWidget(self.file_meta_label)
@@ -365,6 +373,27 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
         if callable(preview):
             preview(self._preview_message)
         self._update_tree_actions_enabled()
+        self._update_sync_menu_button_state()
+
+    def set_sync_actions(
+        self,
+        *,
+        forward_action: QtGui.QAction | None,
+        inverse_action: QtGui.QAction | None,
+    ) -> None:
+        for action in self._sync_actions:
+            try:
+                action.changed.disconnect(self._update_sync_menu_button_state)
+            except Exception:
+                pass
+
+        self._sync_actions = [action for action in (forward_action, inverse_action) if action is not None]
+        menu = QtWidgets.QMenu(self.sync_menu_btn)
+        for action in self._sync_actions:
+            menu.addAction(action)
+            action.changed.connect(self._update_sync_menu_button_state)
+        self.sync_menu_btn.setMenu(menu)
+        self._update_sync_menu_button_state()
 
     def refresh_file_tree(self, selected_path: str | Path | None = None) -> None:
         current_selection = self._current_tree_path()
@@ -488,6 +517,22 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
             border-color: #4b5561;
         }
         QToolButton#treeActionButton:disabled {
+            color: #7c858e;
+            border-color: #343a42;
+        }
+        QToolButton#workspaceSyncButton {
+            background: #262b31;
+            border: 1px solid #3a424c;
+            border-radius: 6px;
+            color: #d7dce1;
+            padding: 3px 10px;
+            min-height: 24px;
+        }
+        QToolButton#workspaceSyncButton:hover {
+            background: #2d333a;
+            border-color: #4b5561;
+        }
+        QToolButton#workspaceSyncButton:disabled {
             color: #7c858e;
             border-color: #343a42;
         }
@@ -665,6 +710,11 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
         enabled = self._project is not None
         for button in (self.new_file_btn, self.new_folder_btn, self.upload_btn, self.refresh_tree_btn):
             button.setEnabled(enabled)
+
+    def _update_sync_menu_button_state(self) -> None:
+        has_actions = bool(self._sync_actions)
+        any_enabled = any(action.isEnabled() for action in self._sync_actions)
+        self.sync_menu_btn.setEnabled(has_actions and any_enabled)
 
     def _current_tree_path(self) -> Path | None:
         item = self.file_tree.currentItem()

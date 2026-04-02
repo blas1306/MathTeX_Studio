@@ -6,8 +6,10 @@ import numpy as np
 import os
 import platform
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 
+from editor_pdf_sync import MtexTraceArtifact, TRACE_ARTIFACT_VERSION, TraceMappingSpan, write_trace_artifact
 import latex_lang as runtime_lang
 from diagnostics import (
     diagnostic_line_offset,
@@ -27,6 +29,9 @@ from latex_lang import (
     set_plot_mode,
     get_plot_mode,
 )  # <- ajustAÃ© esto al nombre de tu funciÃ³n real
+
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
@@ -634,6 +639,225 @@ def split_code_statements(block: str) -> list[str]:
 _split_code_statements = split_code_statements
 
 
+@dataclass(frozen=True)
+class _TrackedTexSegment:
+    text: str
+    source_start_line: int | None
+    source_end_line: int | None
+    kind: str
+
+
+@dataclass(frozen=True)
+class _SourceChunk:
+    text: str
+    start_line: int
+    inside_code: bool
+
+
+def _iter_source_chunks(text: str):
+    position = 0
+    current_line = 1
+    inside_code = False
+
+    for match in CODEBLOCK_SPLIT_RE.finditer(text):
+        chunk = text[position:match.start()]
+        yield _SourceChunk(text=chunk, start_line=current_line, inside_code=inside_code)
+        current_line += chunk.count("\n")
+        current_line += match.group(0).count("\n")
+        position = match.end()
+        inside_code = not inside_code
+
+    tail = text[position:]
+    yield _SourceChunk(text=tail, start_line=current_line, inside_code=inside_code)
+
+
+def _append_literal_segments(segments: list[_TrackedTexSegment], text: str, start_line: int) -> None:
+    if not text:
+        return
+    current_line = start_line
+    for line_text in text.splitlines(keepends=True):
+        segments.append(
+            _TrackedTexSegment(
+                text=line_text,
+                source_start_line=current_line,
+                source_end_line=current_line,
+                kind="source_line",
+            )
+        )
+        current_line += 1
+
+
+def _transform_segments_with_runtime_placeholders(
+    segments: list[_TrackedTexSegment],
+    contexto=None,
+) -> tuple[list[_TrackedTexSegment], bool]:
+    transformed: list[_TrackedTexSegment] = []
+    missing_table = False
+
+    for segment in segments:
+        text = reemplazar_exprs(segment.text, contexto)
+        text = reemplazar_vars(text, contexto)
+        text = reemplazar_plots(text, contexto)
+        text, segment_missing_table = reemplazar_tablas(text, contexto)
+        missing_table = missing_table or segment_missing_table
+        transformed.append(
+            _TrackedTexSegment(
+                text=text,
+                source_start_line=segment.source_start_line,
+                source_end_line=segment.source_end_line,
+                kind=segment.kind,
+            )
+        )
+
+    return transformed, missing_table
+
+
+def _insert_required_package_segments(
+    segments: list[_TrackedTexSegment],
+    required_packages,
+) -> list[_TrackedTexSegment]:
+    marker = r"\begin{document}"
+    marker_index = -1
+    preamble_text = ""
+    for index, segment in enumerate(segments):
+        if marker in segment.text:
+            marker_index = index
+            break
+        preamble_text += segment.text
+
+    if marker_index < 0:
+        return segments
+
+    missing_directives: list[str] = []
+    for pkg_name, directive in required_packages:
+        pattern = rf"\\usepackage(?:\[[^\]]*\])?\{{{re.escape(pkg_name)}\}}"
+        if re.search(pattern, preamble_text):
+            continue
+        missing_directives.append(directive)
+
+    if not missing_directives:
+        return segments
+
+    insertion_text = ("\n" if preamble_text and not preamble_text.endswith("\n") else "") + "\n".join(missing_directives) + "\n"
+    insertion_segment = _TrackedTexSegment(
+        text=insertion_text,
+        source_start_line=None,
+        source_end_line=None,
+        kind="generated_preamble",
+    )
+    return segments[:marker_index] + [insertion_segment] + segments[marker_index:]
+
+
+def _build_trace_spans(segments: list[_TrackedTexSegment]) -> list[TraceMappingSpan]:
+    spans: list[TraceMappingSpan] = []
+    tex_line = 1
+
+    for segment in segments:
+        line_count = len(segment.text.splitlines()) if segment.text else 0
+        if line_count <= 0:
+            continue
+        next_span = TraceMappingSpan(
+            source_start_line=segment.source_start_line,
+            source_end_line=segment.source_end_line,
+            tex_start_line=tex_line,
+            tex_end_line=tex_line + line_count - 1,
+            kind=segment.kind,
+        )
+        if (
+            spans
+            and spans[-1].source_start_line == next_span.source_start_line
+            and spans[-1].source_end_line == next_span.source_end_line
+            and spans[-1].kind == next_span.kind
+            and spans[-1].tex_end_line + 1 == next_span.tex_start_line
+        ):
+            previous = spans[-1]
+            spans[-1] = TraceMappingSpan(
+                source_start_line=previous.source_start_line,
+                source_end_line=previous.source_end_line,
+                tex_start_line=previous.tex_start_line,
+                tex_end_line=next_span.tex_end_line,
+                kind=previous.kind,
+            )
+        else:
+            spans.append(next_span)
+        tex_line += line_count
+
+    return spans
+
+
+def _render_traced_mtex_document(
+    contenido: str,
+    contexto,
+    *,
+    source_path: Path,
+    tex_path: Path,
+    pdf_path: Path,
+    synctex_path: Path,
+    synctex_enabled: bool,
+) -> tuple[str, MtexTraceArtifact]:
+    segments: list[_TrackedTexSegment] = []
+
+    for chunk in _iter_source_chunks(contenido):
+        if not chunk.inside_code:
+            _append_literal_segments(segments, chunk.text, chunk.start_line)
+            continue
+
+        statements = split_code_statements_with_lines(chunk.text)
+        resultado_final = None
+        resultado_final_span: tuple[int, int] | None = None
+        plot_generado = False
+
+        for statement in statements:
+            linea = statement.text.strip()
+            if not linea or _statement_is_comment_only(linea):
+                continue
+            global_start_line = chunk.start_line + statement.start_line - 1
+            global_end_line = chunk.start_line + statement.end_line - 1
+            try:
+                with diagnostic_line_offset(global_start_line - 1):
+                    resultado = ejecutar_linea(statement.text)
+                resultado_final = resultado
+                resultado_final_span = (global_start_line, global_end_line)
+                if _statement_requests_plot(statement.text):
+                    plot_generado = True
+            except Exception as e:
+                diag = runtime_error_from_exception(e, source=statement.text, line=global_start_line)
+                segments.append(
+                    _TrackedTexSegment(
+                        text=_latex_message(render_diagnostic(diag)),
+                        source_start_line=global_start_line,
+                        source_end_line=global_end_line,
+                        kind="runtime_diagnostic",
+                    )
+                )
+
+        if resultado_final is not None and not plot_generado and resultado_final_span is not None:
+            segments.append(
+                _TrackedTexSegment(
+                    text=expr_to_latex(resultado_final),
+                    source_start_line=resultado_final_span[0],
+                    source_end_line=resultado_final_span[1],
+                    kind="code_result",
+                )
+            )
+
+    segments, missing_table = _transform_segments_with_runtime_placeholders(segments, contexto)
+    needs_xcolor = missing_table or any(r"\textcolor{" in segment.text for segment in segments)
+    required_packages = _build_required_packages(contexto, include_xcolor=needs_xcolor)
+    segments = _insert_required_package_segments(segments, required_packages)
+    salida_tex = "".join(segment.text for segment in segments)
+    trace_artifact = MtexTraceArtifact(
+        version=TRACE_ARTIFACT_VERSION,
+        source_path=source_path,
+        tex_path=tex_path,
+        pdf_path=pdf_path,
+        synctex_path=synctex_path,
+        synctex_enabled=synctex_enabled,
+        spans=_build_trace_spans(segments),
+    )
+    return salida_tex, trace_artifact
+
+
 # ============================================================
 # === EJECUTOR PRINCIPAL DE ARCHIVOS .MTEX ===================
 # ============================================================
@@ -663,6 +887,8 @@ def ejecutar_mtex(
     output_stem = output_basename or source_path.stem
     tex_path = output_dir_path / f"{output_stem}.tex"
     pdf_path = output_dir_path / f"{output_stem}.pdf"
+    trace_path = output_dir_path / f"{output_stem}.mtextrace.json"
+    synctex_path = output_dir_path / f"{output_stem}.synctex.gz"
     log_path = output_dir_path / f"{output_stem}.log"
     compile_log_path = output_dir_path / "compile.log"
     try:
@@ -676,47 +902,16 @@ def ejecutar_mtex(
     with open(source_path, "r", encoding="utf-8") as f:
         contenido = f.read()
     likely_multipass = _tex_likely_needs_multipass(contenido)
-
-    bloques = CODEBLOCK_SPLIT_RE.split(contenido)
-    salida_parts: list[str] = []
-    dentro = False
+    salida_tex, trace_artifact = _render_traced_mtex_document(
+        contenido,
+        contexto,
+        source_path=source_path,
+        tex_path=tex_path,
+        pdf_path=pdf_path,
+        synctex_path=synctex_path,
+        synctex_enabled=True,
+    )
     compile_log_fallback = None
-
-    for bloque in bloques:
-        if dentro:
-            lineas = split_code_statements_with_lines(bloque)
-            resultado_final = None
-            plot_generado = False
-
-            for statement in lineas:
-                linea = statement.text.strip()
-                if not linea or _statement_is_comment_only(linea):
-                    continue
-                try:
-                    with diagnostic_line_offset(statement.start_line - 1):
-                        resultado = ejecutar_linea(statement.text)
-                    resultado_final = resultado
-                    if _statement_requests_plot(statement.text):
-                        plot_generado = True
-                except Exception as e:
-                    diag = runtime_error_from_exception(e, source=statement.text, line=statement.start_line)
-                    salida_parts.append(_latex_message(render_diagnostic(diag)))
-
-            if resultado_final is not None and not plot_generado:
-                salida_parts.append(expr_to_latex(resultado_final))
-        else:
-            salida_parts.append(bloque)
-
-        dentro = not dentro
-
-    salida_tex = "".join(salida_parts)
-    salida_tex = reemplazar_exprs(salida_tex, contexto)
-    salida_tex = reemplazar_vars(salida_tex, contexto)
-    salida_tex = reemplazar_plots(salida_tex, contexto)
-    salida_tex, missing_table = reemplazar_tablas(salida_tex, contexto)
-    needs_xcolor = missing_table or (r"\textcolor{" in salida_tex)
-    required_packages = _build_required_packages(contexto, include_xcolor=needs_xcolor)
-    salida_tex = ensure_required_packages(salida_tex, required_packages=required_packages)
 
     with open(tex_path, "w", encoding="utf-8") as f:
         f.write(salida_tex)
@@ -738,6 +933,7 @@ def ejecutar_mtex(
                 str(source_dir),
                 draftmode=True,
                 output_dir=str(output_dir_path),
+                synctex=True,
             )
             if draft_pass.returncode != 0:
                 final_run = draft_pass
@@ -747,6 +943,7 @@ def ejecutar_mtex(
                     str(source_dir),
                     draftmode=False,
                     output_dir=str(output_dir_path),
+                    synctex=True,
                 )
                 final_run = normal_pass
                 if normal_pass.returncode == 0 and _log_requests_rerun(str(log_path)):
@@ -755,6 +952,7 @@ def ejecutar_mtex(
                         str(source_dir),
                         draftmode=False,
                         output_dir=str(output_dir_path),
+                        synctex=True,
                     )
         else:
             normal_pass = _run_pdflatex(
@@ -762,6 +960,7 @@ def ejecutar_mtex(
                 str(source_dir),
                 draftmode=False,
                 output_dir=str(output_dir_path),
+                synctex=True,
             )
             final_run = normal_pass
             if normal_pass.returncode == 0 and _log_requests_rerun(str(log_path)):
@@ -770,11 +969,28 @@ def ejecutar_mtex(
                     str(source_dir),
                     draftmode=False,
                     output_dir=str(output_dir_path),
+                    synctex=True,
                 )
 
         if final_run is not None and final_run.returncode == 0 and pdf_path.exists():
             print("PDF compiled successfully.")
             pdf_generado = str(pdf_path)
+            trace_artifact = MtexTraceArtifact(
+                version=trace_artifact.version,
+                source_path=trace_artifact.source_path,
+                tex_path=trace_artifact.tex_path,
+                pdf_path=trace_artifact.pdf_path,
+                synctex_path=trace_artifact.synctex_path,
+                synctex_enabled=synctex_path.exists(),
+                spans=trace_artifact.spans,
+            )
+            write_trace_artifact(trace_path, trace_artifact)
+            logger.debug(
+                "Forward sync trace written to %s with %s span(s). SyncTeX available: %s",
+                trace_path,
+                len(trace_artifact.spans),
+                trace_artifact.synctex_enabled,
+            )
 
             if abrir_pdf:
                 system_name = platform.system()

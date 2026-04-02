@@ -148,3 +148,13 @@ def test_runtime_recovers_cleanly_after_error():
     assert success_output == ""
     assert env_ast["good"] == 4
     assert "bad" not in env_ast
+
+
+def test_complex_abs_command_uses_user_function_dispatch_in_console():
+    _run("f(x) = x + 1;")
+    _run("xN = 2;")
+
+    output = _run(r"\abs(f(xN))")
+
+    assert "Error while evaluating abs" not in output
+    assert output.strip() == "3"

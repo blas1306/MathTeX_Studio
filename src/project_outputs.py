@@ -21,6 +21,7 @@ class BuildArtifacts:
     pdf_path: Path
     toc_path: Path
     aux_path: Path
+    trace_path: Path
     latex_log_path: Path
     compile_log_path: Path
     synctex_path: Path
@@ -56,6 +57,7 @@ class ProjectOutputManager:
             pdf_path=build_dir / f"{stem}.pdf",
             toc_path=build_dir / f"{stem}.toc",
             aux_path=build_dir / f"{stem}.aux",
+            trace_path=build_dir / f"{stem}.mtextrace.json",
             latex_log_path=build_dir / f"{stem}.log",
             compile_log_path=build_dir / self.compile_log_filename,
             synctex_path=build_dir / f"{stem}.synctex.gz",
