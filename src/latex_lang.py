@@ -1995,6 +1995,7 @@ _COMMON_SYMBOL_REGISTRY = build_parser_symbol_registry(
 )
 COMMON_SYMBOLS = _COMMON_SYMBOL_REGISTRY.common_symbols
 PARSER_LOCAL_DICT = _COMMON_SYMBOL_REGISTRY.parser_local_dict
+register_shared_symbols(COMMON_SYMBOLS, PARSER_LOCAL_DICT, {"arg": arg})
 _EXPR_PARSER_CONFIG = build_expr_parser_config(PARSER_LOCAL_DICT)
 
 
@@ -2524,6 +2525,7 @@ def _run_function_lines(lines: list[str]) -> None:
                 r"\arcsin": "asin",
                 r"\arccos": "acos",
                 r"\arctan": "atan",
+                r"\angle": "arg",
                 r"\abs": "Abs",
                 r"\sign": "sign",
                 r"\floor": "floor",
@@ -3241,6 +3243,7 @@ def _execute_line_core(linea: str) -> None:
         r"\exp": "exp", r"\ln": "ln", r"\sqrt": "sqrt", r"\nthroot": "nthroot",
         r"\sinh": "sinh", r"\cosh": "cosh", r"\tanh": "tanh",
         r"\arcsin": "asin", r"\arccos": "acos", r"\arctan": "atan",
+        r"\angle": "arg",
         r"\abs": "abs", r"\sign": "sign", r"\floor": "floor", r"\ceil": "ceiling",
         r"\min": "_mt_min", r"\max": "_mt_max",
         r"\solve": "_mt_solve",

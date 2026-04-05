@@ -67,6 +67,7 @@ BASE_ENTRIES: tuple[CommandSuggestion, ...] = (
     _entry(r"\arccos()", "Inverse cosine.", "functions"),
     _entry(r"\arcsin()", "Inverse sine.", "functions"),
     _entry(r"\arctan()", "Inverse tangent.", "functions"),
+    _entry(r"\angle()", "Principal angle of a complex value.", "complex"),
     _entry(r"\benchmark", "Run a benchmark.", "workspace", insert_text=r"\benchmark ", signature=r"\benchmark[loops] <code>"),
     _entry(r"\ceil()", "Ceiling function.", "functions"),
     _entry(r"\clean", "Clear the console output.", "workspace"),

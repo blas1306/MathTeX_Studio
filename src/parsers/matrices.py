@@ -11,7 +11,7 @@ from sympy import Matrix, MatrixBase, Rational, Expr, default_sort_key
 from numeric_format import format_value_for_display, try_format_numeric_scalar
 from .context import ParserContext
 
-MULTI_OUTPUT_COMMANDS = {r"\LU", r"\LDU", r"\Spec", r"\Eig", r"\Schur", r"\QR", r"\QR1", r"\SVD", r"\sort", r"\size"}
+MULTI_OUTPUT_COMMANDS = {r"\LU", r"\LDU", r"\Spec", r"\Eig", r"\Schur", r"\QR", r"\QR1", r"\SVD", r"\sort", r"\size", r"\polar"}
 
 LINEAR_SOLVE_UNIQUE = "unique"
 LINEAR_SOLVE_MINIMUM_NORM = "minimum_norm"
