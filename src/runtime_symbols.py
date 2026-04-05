@@ -15,6 +15,7 @@ def build_runtime_shared_symbols(
         "_mt_max": runtime_helpers["mt_max"],
         "_mt_length": runtime_helpers["mt_length"],
         "_mt_numel": runtime_helpers["mt_numel"],
+        "_mt_nchoosek": runtime_helpers["mt_nchoosek"],
         "_mt_solve": runtime_helpers["mt_solve"],
         "_mt_bar": runtime_helpers["mt_bar"],
         "_mt_sin": math_aliases["sin"],

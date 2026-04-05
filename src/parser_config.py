@@ -73,6 +73,7 @@ PROTECTED_FUNCS = {
     "_mt_max": "MTMAX",
     "_mt_length": "MTLENGTH",
     "_mt_numel": "MTNUMEL",
+    "_mt_nchoosek": "MTNCHOOSEK",
     "_mt_linspace": "MTLINSPACE",
     "_mt_solve": "MTSOLVE",
     "_mt_bar": "MTBAR",

@@ -1,5 +1,6 @@
 import io
 import ast
+import math
 import re
 import sys
 import types
@@ -1567,6 +1568,40 @@ def _mt_numel(value: Any) -> Any:
     return sp.Integer(1)
 
 
+def _mt_nchoosek(n: Any, k: Any) -> Any:
+    error_message = "nchoosek only accepts nonnegative integers n and k with k <= n."
+
+    def _coerce_exact_integer(value: Any) -> int:
+        if isinstance(value, (str, bytes, complex, MatrixBase, np.ndarray, list, tuple, dict, set)):
+            raise ValueError(error_message)
+        if isinstance(value, (float, np.floating, sp.Float)):
+            raise ValueError(error_message)
+        try:
+            sym_val = sp.sympify(value)
+        except Exception as exc:
+            raise ValueError(error_message) from exc
+        if sym_val.is_real is False:
+            raise ValueError(error_message)
+        free_symbols = getattr(sym_val, "free_symbols", None)
+        if free_symbols:
+            raise ValueError(error_message)
+        if getattr(sym_val, "is_integer", None) is not True:
+            raise ValueError(error_message)
+        try:
+            int_val = int(sym_val)
+        except Exception as exc:
+            raise ValueError(error_message) from exc
+        if sp.Integer(int_val) != sym_val:
+            raise ValueError(error_message)
+        return int_val
+
+    n_int = _coerce_exact_integer(n)
+    k_int = _coerce_exact_integer(k)
+    if n_int < 0 or k_int < 0 or k_int > n_int:
+        raise ValueError(error_message)
+    return sp.Integer(math.comb(n_int, k_int))
+
+
 def _mt_min(*args: Any) -> Any:
     if not args:
         raise ValueError("min requires at least one argument.")
@@ -2046,6 +2081,7 @@ _RUNTIME_SHARED_SYMBOLS = build_runtime_shared_symbols(
         "mt_max": _mt_max,
         "mt_length": _mt_length,
         "mt_numel": _mt_numel,
+        "mt_nchoosek": _mt_nchoosek,
         "mt_solve": _mt_solve,
         "mt_bar": _mt_bar,
         "mt_linspace": _mt_linspace,
@@ -3333,7 +3369,7 @@ def _execute_line_core(linea: str) -> None:
         r"\angle": "arg",
         r"\abs": "abs", r"\sign": "sign", r"\floor": "floor", r"\ceil": "ceiling",
         r"\min": "_mt_min", r"\max": "_mt_max",
-        r"\length": "_mt_length", r"\numel": "_mt_numel",
+        r"\length": "_mt_length", r"\numel": "_mt_numel", r"\nchoosek": "_mt_nchoosek",
         r"\solve": "_mt_solve",
         r"\linspace": "_mt_linspace",
         r"\infty": "oo", r"\e": "E"
