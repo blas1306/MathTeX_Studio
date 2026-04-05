@@ -1482,6 +1482,91 @@ def _mt_reduce_columns(value: Any, reducer: Callable[..., Any], label: str) -> A
     return sp.sympify(value)
 
 
+def _mt_vector_measure_from_shape(
+    rows: int,
+    cols: int,
+    *,
+    label: str,
+    allow_matrix: bool,
+) -> Any:
+    if rows <= 0 or cols <= 0:
+        raise ValueError(f"{label} does not accept empty arrays.")
+
+    if rows == 1 and cols == 1:
+        return sp.Integer(1)
+    if rows == 1 or cols == 1:
+        return sp.Integer(max(rows, cols))
+    if allow_matrix:
+        return sp.Integer(rows * cols)
+    raise ValueError(f"{label} only accepts scalars or vectors.")
+
+
+def _mt_nested_sequence(item: Any) -> bool:
+    return isinstance(item, (list, tuple, np.ndarray, MatrixBase))
+
+
+def _mt_length(value: Any) -> Any:
+    if isinstance(value, MatrixBase):
+        mat = Matrix(value)
+        return _mt_vector_measure_from_shape(mat.rows, mat.cols, label="length", allow_matrix=False)
+
+    if isinstance(value, np.ndarray):
+        arr = np.asarray(value, dtype=object)
+        if arr.size == 0:
+            raise ValueError("length does not accept empty arrays.")
+        if arr.ndim == 0:
+            return sp.Integer(1)
+        if arr.ndim == 1:
+            return sp.Integer(arr.shape[0])
+        if arr.ndim == 2:
+            return _mt_vector_measure_from_shape(arr.shape[0], arr.shape[1], label="length", allow_matrix=False)
+        raise ValueError("length only accepts scalars or vectors.")
+
+    if isinstance(value, (list, tuple)):
+        if not value:
+            raise ValueError("length does not accept empty arrays.")
+        try:
+            mat = Matrix(value)
+        except Exception:
+            if any(_mt_nested_sequence(item) for item in value):
+                raise ValueError("length only accepts scalars or vectors.")
+            return sp.Integer(len(value))
+        return _mt_length(mat)
+
+    return sp.Integer(1)
+
+
+def _mt_numel(value: Any) -> Any:
+    if isinstance(value, MatrixBase):
+        mat = Matrix(value)
+        return _mt_vector_measure_from_shape(mat.rows, mat.cols, label="numel", allow_matrix=True)
+
+    if isinstance(value, np.ndarray):
+        arr = np.asarray(value, dtype=object)
+        if arr.size == 0:
+            raise ValueError("numel does not accept empty arrays.")
+        if arr.ndim <= 2:
+            if arr.ndim == 0:
+                return sp.Integer(1)
+            if arr.ndim == 1:
+                return sp.Integer(arr.size)
+            return _mt_vector_measure_from_shape(arr.shape[0], arr.shape[1], label="numel", allow_matrix=True)
+        return sp.Integer(arr.size)
+
+    if isinstance(value, (list, tuple)):
+        if not value:
+            raise ValueError("numel does not accept empty arrays.")
+        try:
+            mat = Matrix(value)
+        except Exception:
+            if any(_mt_nested_sequence(item) for item in value):
+                raise ValueError("numel only accepts scalars, vectors, or matrices.")
+            return sp.Integer(len(value))
+        return _mt_numel(mat)
+
+    return sp.Integer(1)
+
+
 def _mt_min(*args: Any) -> Any:
     if not args:
         raise ValueError("min requires at least one argument.")
@@ -1959,6 +2044,8 @@ _RUNTIME_SHARED_SYMBOLS = build_runtime_shared_symbols(
     runtime_helpers={
         "mt_min": _mt_min,
         "mt_max": _mt_max,
+        "mt_length": _mt_length,
+        "mt_numel": _mt_numel,
         "mt_solve": _mt_solve,
         "mt_bar": _mt_bar,
         "mt_linspace": _mt_linspace,
@@ -3246,6 +3333,7 @@ def _execute_line_core(linea: str) -> None:
         r"\angle": "arg",
         r"\abs": "abs", r"\sign": "sign", r"\floor": "floor", r"\ceil": "ceiling",
         r"\min": "_mt_min", r"\max": "_mt_max",
+        r"\length": "_mt_length", r"\numel": "_mt_numel",
         r"\solve": "_mt_solve",
         r"\linspace": "_mt_linspace",
         r"\infty": "oo", r"\e": "E"

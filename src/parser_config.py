@@ -71,6 +71,8 @@ PROTECTED_FUNCS = {
     "diff": "MTDIFF",
     "_mt_min": "MTMIN",
     "_mt_max": "MTMAX",
+    "_mt_length": "MTLENGTH",
+    "_mt_numel": "MTNUMEL",
     "_mt_linspace": "MTLINSPACE",
     "_mt_solve": "MTSOLVE",
     "_mt_bar": "MTBAR",

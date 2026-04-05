@@ -9,6 +9,7 @@ import sympy as sp
 from sympy import Matrix, MatrixBase, Rational, Expr, default_sort_key
 
 from numeric_format import format_value_for_display, try_format_numeric_scalar
+from parser_common import _split_top_level
 from .context import ParserContext
 
 MULTI_OUTPUT_COMMANDS = {r"\LU", r"\LDU", r"\Spec", r"\Eig", r"\Schur", r"\QR", r"\QR1", r"\SVD", r"\sort", r"\size", r"\polar"}
@@ -107,6 +108,37 @@ def _split_top_level_args(text: str) -> list[str]:
         current.append(ch)
     parts.append("".join(current).strip())
     return parts
+
+
+def _find_matching_bracket(text: str, start_idx: int) -> int | None:
+    depth = 0
+    in_str = False
+    quote = ""
+    escape = False
+    for idx in range(start_idx, len(text)):
+        ch = text[idx]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if in_str:
+            if ch == quote:
+                in_str = False
+                quote = ""
+            continue
+        if ch in {"'", '"'}:
+            in_str = True
+            quote = ch
+            continue
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                return idx
+    return None
 
 
 def pretty_span(vectors: List[List[Any]]) -> str:
@@ -622,6 +654,59 @@ def _is_string_literal(token: str) -> bool:
     )
 
 
+def _rewrite_inline_semicolon_matrices(expr: str) -> str:
+    out: list[str] = []
+    i = 0
+    while i < len(expr):
+        ch = expr[i]
+        if ch in {"'", '"'}:
+            quote = ch
+            out.append(ch)
+            i += 1
+            while i < len(expr):
+                current = expr[i]
+                out.append(current)
+                if current == "\\" and i + 1 < len(expr):
+                    i += 2
+                    out.append(expr[i - 1])
+                    continue
+                if current == quote:
+                    i += 1
+                    break
+                i += 1
+            continue
+        if ch != "[":
+            out.append(ch)
+            i += 1
+            continue
+
+        end = _find_matching_bracket(expr, i)
+        if end is None:
+            out.append(ch)
+            i += 1
+            continue
+
+        inner = _rewrite_inline_semicolon_matrices(expr[i + 1 : end])
+        rows = [row.strip() for row in _split_top_level(inner, ";")]
+        if len(rows) > 1 and all(rows):
+            matrix_rows: list[str] = []
+            valid_matrix = True
+            for row in rows:
+                tokens = [token.strip() for token in _split_matrix_row(row) if token.strip()]
+                if not tokens:
+                    valid_matrix = False
+                    break
+                matrix_rows.append("[" + ", ".join(tokens) + "]")
+            if valid_matrix:
+                out.append("Matrix([" + ", ".join(matrix_rows) + "])")
+            else:
+                out.append("[" + inner + "]")
+        else:
+            out.append("[" + inner + "]")
+        i = end + 1
+    return "".join(out)
+
+
 def normalize_matrix_expr(expr: str, env: dict[str, Any]) -> str:
     """Convierte notaciones LaTeX de matrices en expresiones Python/SymPy."""
 
@@ -895,6 +980,7 @@ def normalize_matrix_expr(expr: str, env: dict[str, Any]) -> str:
         _orth_repl,
         expr,
     )
+    expr = _rewrite_inline_semicolon_matrices(expr)
     expr = re.sub(r"I_\{(\d+)\}", r"Matrix.eye(\1)", expr)
     expr = _caret_to_pow(expr)
     return expr
