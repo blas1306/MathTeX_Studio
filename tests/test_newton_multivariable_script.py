@@ -39,7 +39,7 @@ class NewtonMultivariableScriptTests(unittest.TestCase):
             try:
                 out = io.StringIO()
                 with redirect_stdout(out):
-                    ejecutar_linea(f"@run {script_path.name}")
+                    ejecutar_linea(fr"\run {script_path.name}")
                 captured = out.getvalue()
             finally:
                 change_working_dir(previous_dir)
@@ -85,7 +85,7 @@ class NewtonMultivariableScriptTests(unittest.TestCase):
             try:
                 out = io.StringIO()
                 with redirect_stdout(out):
-                    ejecutar_linea(f"@run {script_path.name}")
+                    ejecutar_linea(fr"\run {script_path.name}")
                 captured = out.getvalue()
             finally:
                 change_working_dir(previous_dir)
@@ -126,7 +126,7 @@ class NewtonMultivariableScriptTests(unittest.TestCase):
             try:
                 out = io.StringIO()
                 with redirect_stdout(out):
-                    ejecutar_linea(f"@run {script_path.name}")
+                    ejecutar_linea(fr"\run {script_path.name}")
                 captured = out.getvalue()
             finally:
                 change_working_dir(previous_dir)
@@ -165,7 +165,7 @@ class NewtonMultivariableScriptTests(unittest.TestCase):
             try:
                 out = io.StringIO()
                 with redirect_stdout(out):
-                    ejecutar_linea(f"@run {script_path.name}")
+                    ejecutar_linea(fr"\run {script_path.name}")
                 captured = out.getvalue()
             finally:
                 change_working_dir(previous_dir)
@@ -210,7 +210,7 @@ class NewtonMultivariableScriptTests(unittest.TestCase):
             try:
                 out = io.StringIO()
                 with redirect_stdout(out):
-                    ejecutar_linea(f"@run {script_path.name}")
+                    ejecutar_linea(fr"\run {script_path.name}")
                 captured = out.getvalue()
             finally:
                 change_working_dir(previous_dir)
@@ -257,7 +257,7 @@ class NewtonMultivariableScriptTests(unittest.TestCase):
             try:
                 out = io.StringIO()
                 with redirect_stdout(out):
-                    ejecutar_linea(f"@run {script_path.name}")
+                    ejecutar_linea(fr"\run {script_path.name}")
                 captured = out.getvalue()
             finally:
                 change_working_dir(previous_dir)
@@ -307,7 +307,7 @@ class NewtonMultivariableScriptTests(unittest.TestCase):
             try:
                 out = io.StringIO()
                 with redirect_stdout(out):
-                    ejecutar_linea(f"@run {script_path.name}")
+                    ejecutar_linea(fr"\run {script_path.name}")
                 captured = out.getvalue()
             finally:
                 change_working_dir(previous_dir)
@@ -345,7 +345,7 @@ class NewtonMultivariableScriptTests(unittest.TestCase):
             try:
                 out = io.StringIO()
                 with redirect_stdout(out):
-                    ejecutar_linea(f"@run {script_path.name}")
+                    ejecutar_linea(fr"\run {script_path.name}")
                 captured = out.getvalue()
             finally:
                 change_working_dir(previous_dir)
@@ -375,7 +375,7 @@ class NewtonMultivariableScriptTests(unittest.TestCase):
             try:
                 out = io.StringIO()
                 with redirect_stdout(out):
-                    ejecutar_linea(f"@run {script_path.name}")
+                    ejecutar_linea(fr"\run {script_path.name}")
                 captured = out.getvalue()
             finally:
                 change_working_dir(previous_dir)

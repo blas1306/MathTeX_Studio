@@ -9,7 +9,7 @@ import keyword
 import time
 import tempfile
 from dataclasses import dataclass
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from pathlib import Path
 from typing import Callable, List, Optional, Any
 import numpy as np
@@ -371,6 +371,31 @@ env_lambdified = {} # Funciones evaluables numéricas
 user_norms = {}  # Guarda las normas definidas por el usuario
 user_inners = {}
 _MISSING = object()
+_LOADED_MODULES: dict[str, "MathTeXModule"] = {}
+_MODULE_PATH_CACHE: dict[str, "MathTeXModule"] = {}
+_MODULE_LOAD_STACK: list[str] = []
+_MODULE_LOAD_PATH_STACK: list[str] = []
+
+
+class MathTeXImportError(Exception):
+    pass
+
+
+@dataclass
+class MathTeXModule:
+    name: str
+    path: Path
+    exports: dict[str, Any]
+    env: dict[str, Any]
+
+    def get_export(self, name: str) -> Any:
+        normalized = _normalize_name(name)
+        if normalized.startswith("_") or normalized not in self.exports:
+            raise AttributeError(f"Module '{self.name}' has no attribute '{name}'")
+        return self.exports[normalized]
+
+    def __getattr__(self, name: str) -> Any:
+        return self.get_export(name)
 
 
 def _same_binding(left: Any, right: Any) -> bool:
@@ -3076,11 +3101,27 @@ def _execute_line_core(linea: str) -> None:
         print(f"Optimizaciones en modo debug: {'activado' if env_ast['_opt_debug'] else 'desactivado'}.")
         return
 
+    m_import = re.match(r"^import\s+([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*)\s*$", stripped_raw)
+    if m_import:
+        module = m_import.group(1)
+        try:
+            _handle_import(module)
+        except MathTeXImportError as exc:
+            if _MODULE_LOAD_STACK:
+                raise
+            print(exc)
+        return
+
     m_from = re.match(r"^from\s+([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*)\s+import\s+(.+)$", stripped_raw)
     if m_from:
         module = m_from.group(1)
         names_raw = m_from.group(2)
-        _handle_from_import(module, names_raw)
+        try:
+            _handle_from_import(module, names_raw)
+        except MathTeXImportError as exc:
+            if _MODULE_LOAD_STACK:
+                raise
+            print(exc)
         return
 
     if stripped_raw.lower().startswith("cd "):
@@ -3091,17 +3132,17 @@ def _execute_line_core(linea: str) -> None:
         _set_working_dir(_resolve_path(destino))
         return
 
-    if stripped_raw.startswith("@run"):
+    if stripped_raw.startswith(r"\run") or stripped_raw.startswith("@run"):
         partes = stripped_raw.split(maxsplit=1)
         if len(partes) < 2:
-            print("Usage: @run file.mtx")
+            print(r"Usage: \run file.mtx")
             return
         destino_txt = partes[1].strip()
         destino_path = Path(destino_txt)
         if destino_path.suffix == "":
             destino_path = destino_path.with_suffix(".mtx")
         elif destino_path.suffix.lower() == ".mtex":
-            print("This file looks like an .mtex document (LaTeX+MathTeX). Use @compile instead of @run.")
+            print(r"This file looks like an .mtex document (LaTeX+MathTeX). Use @compile instead of \run.")
             return
         ruta = _resolve_path(str(destino_path))
         _run_script_file(ruta)
@@ -3116,7 +3157,7 @@ def _execute_line_core(linea: str) -> None:
             if archivo_path.suffix == "":
                 archivo_path = archivo_path.with_suffix(".mtex")
             elif archivo_path.suffix.lower() == ".mtx":
-                print("This file looks like an .mtx script. Use @run instead of @compile.")
+                print(r"This file looks like an .mtx script. Use \run instead of @compile.")
                 return
             archivo = _resolve_path(str(archivo_path))
             try:
@@ -3257,6 +3298,7 @@ def _execute_line_core(linea: str) -> None:
                 outputs=_FUNC_DEF["outputs"],
                 body=_FUNC_DEF["body"],
                 working_dir=_FUNC_DEF["working_dir"],
+                defining_env=env_ast,
             )
             env_ast[func_obj.name] = func_obj
             print(f"Function {func_obj.name} defined.")
@@ -4082,6 +4124,10 @@ def reset_environment(env: dict | None = None) -> None:
     env_lambdified.clear()
     user_norms.clear()
     user_inners.clear()
+    _LOADED_MODULES.clear()
+    _MODULE_PATH_CACHE.clear()
+    _MODULE_LOAD_STACK.clear()
+    _MODULE_LOAD_PATH_STACK.clear()
     reset_numeric_format()
     reset_plot_state(target)
 
@@ -4098,26 +4144,59 @@ def reset_environment(env: dict | None = None) -> None:
         env_ast.update(target)
 
 
+def _infer_packed_function_vars(values: tuple[Any, ...]) -> Matrix | None:
+    free_symbols: set[sp.Symbol] = set()
+    for value in values:
+        try:
+            current_symbols = getattr(value, "free_symbols", None)
+        except Exception:
+            current_symbols = None
+        if current_symbols:
+            free_symbols.update(current_symbols)
+    if not free_symbols:
+        return None
+    ordered = _mt_ordered_symbols(free_symbols)
+    if not ordered:
+        return None
+    return Matrix([ordered])
+
+
 class UserFunction:
     """Representa una función definida por el usuario en sintaxis MathTeX/Octave."""
 
-    def __init__(self, name: str, args: list[str], outputs: list[str], body: list[str], working_dir: Path):
+    def __init__(
+        self,
+        name: str,
+        args: list[str],
+        outputs: list[str],
+        body: list[str],
+        working_dir: Path,
+        defining_env: dict[str, Any] | None = None,
+    ):
         self.name = _normalize_name(name)
         self.args = [_normalize_name(a) for a in args]
         self.outputs = [_normalize_name(o) for o in outputs]
         self.body = body
         self.working_dir = working_dir
+        self.defining_env = defining_env if defining_env is not None else env_ast
 
     def __call__(self, *call_args):
         if len(call_args) != len(self.args):
             if len(call_args) > len(self.args) and self.args and self.args[0].lower() == "f":
-                packed_count = len(call_args) - len(self.args) + 1
-                call_args = (Matrix(list(call_args[:packed_count])),) + call_args[packed_count:]
+                if len(self.args) >= 2 and self.args[1].lower() in {"vars", "variables"}:
+                    packed_count = len(call_args) - len(self.args) + 2
+                    if packed_count > 1:
+                        derived_vars = _infer_packed_function_vars(call_args[:packed_count])
+                        if derived_vars is not None:
+                            call_args = (Matrix(list(call_args[:packed_count])), derived_vars) + call_args[packed_count:]
+                if len(call_args) != len(self.args):
+                    packed_count = len(call_args) - len(self.args) + 1
+                    call_args = (Matrix(list(call_args[:packed_count])),) + call_args[packed_count:]
             if len(call_args) != len(self.args):
                 raise ValueError(f"{self.name} espera {len(self.args)} argumento(s), recibio {len(call_args)}.")
 
         global env_ast, _WORKING_DIR
-        local_env = dict(env_ast)
+        local_env = dict(self.defining_env)
         for arg_name, value in zip(self.args, call_args):
             local_env[arg_name] = value
 
@@ -4148,6 +4227,22 @@ class UserFunction:
         if len(results) == 1:
             return results[0]
         return tuple(results)
+
+
+@contextmanager
+def _temporary_runtime_env(temp_env: dict[str, Any], working_dir: Path | None = None):
+    global env_ast, _WORKING_DIR
+    previous_env = env_ast
+    previous_dir = _WORKING_DIR
+    env_ast = temp_env
+    if working_dir is not None:
+        _set_working_dir(working_dir)
+    try:
+        yield
+    finally:
+        env_ast = previous_env
+        if working_dir is not None:
+            _set_working_dir(previous_dir)
 
 
 def _resolve_path(raw: str) -> Path:
@@ -4192,6 +4287,7 @@ def _run_script_file(path: Path, silent: bool = False) -> None:
     _set_working_dir(path.parent)
     try:
         if not silent:
+            print(f">> {path.name}")
             for statement in statements:
                 with diagnostic_line_offset(statement.start_line - 1):
                     ejecutar_linea(statement.text)
@@ -4202,9 +4298,12 @@ def _run_script_file(path: Path, silent: bool = False) -> None:
             for statement in statements:
                 with diagnostic_line_offset(statement.start_line - 1):
                     ejecutar_linea(statement.text)
+        stdout_text = out_buffer.getvalue()
         err_text = err_buffer.getvalue()
         if err_text:
             sys.stderr.write(err_text)
+        if stdout_text and _should_show_silenced_output(stdout_text):
+            sys.stdout.write(stdout_text)
     finally:
         _set_working_dir(previous_dir)
 
@@ -4229,37 +4328,181 @@ def list_working_dir_files(pattern: str | None = None) -> list[Path]:
     return sorted(files)
 
 
-def _handle_from_import(module: str, names_raw: str) -> None:
-    target_path = None
-    module_path = Path(module)
-    candidates: list[Path] = []
-    if module_path.suffix.lower() in {".mtx", ".mtex"}:
-        candidates.append(_resolve_path(str(module_path)))
-    else:
-        module_parts = [part for part in module.split(".") if part]
-        relative_module = Path(*module_parts) if module_parts else module_path
-        candidates.append(_resolve_path(str(relative_module.with_suffix(".mtx"))))
-        candidates.append(_resolve_path(str(relative_module.with_suffix(".mtex"))))
+def _find_project_root(start_dir: Path) -> Path | None:
+    try:
+        current = start_dir.expanduser().resolve()
+    except OSError:
+        return None
+    for candidate in [current, *current.parents]:
+        if (candidate / ".mtexproj").exists():
+            return candidate
+    return None
 
+
+def _module_relative_path(module_name: str) -> Path:
+    parts = [part for part in module_name.split(".") if part]
+    return Path(*parts) if parts else Path(module_name)
+
+
+def _module_search_roots() -> list[Path]:
+    roots: list[Path] = []
+    seen: set[str] = set()
+    candidates = [_WORKING_DIR]
+    project_root = _find_project_root(_WORKING_DIR)
+    if project_root is not None:
+        candidates.append(project_root)
+    candidates.append(Path.cwd())
     for candidate in candidates:
-        if candidate.exists():
-            target_path = candidate
-            break
+        try:
+            resolved = candidate.expanduser().resolve()
+        except OSError:
+            continue
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        roots.append(resolved)
+    return roots
 
+
+def _resolve_module_file(module_name: str) -> tuple[Path | None, Path | None]:
+    relative_path = _module_relative_path(module_name)
+    found_mtex: Path | None = None
+    for root in _module_search_roots():
+        candidate_mtx = (root / relative_path).with_suffix(".mtx")
+        if candidate_mtx.exists() and candidate_mtx.is_file():
+            return candidate_mtx.resolve(), None
+        candidate_mtex = (root / relative_path).with_suffix(".mtex")
+        if found_mtex is None and candidate_mtex.exists() and candidate_mtex.is_file():
+            found_mtex = candidate_mtex.resolve()
+
+    project_root = _find_project_root(_WORKING_DIR)
+    if project_root is not None and len(relative_path.parts) == 1:
+        filename_mtx = f"{relative_path.name}.mtx"
+        matches_mtx = sorted(project_root.rglob(filename_mtx), key=lambda path: (len(path.parts), str(path)))
+        if matches_mtx:
+            return matches_mtx[0].resolve(), None
+        filename_mtex = f"{relative_path.name}.mtex"
+        matches_mtex = sorted(project_root.rglob(filename_mtex), key=lambda path: (len(path.parts), str(path)))
+        if matches_mtex:
+            found_mtex = matches_mtex[0].resolve()
+    return None, found_mtex
+
+
+def _is_module_export(name: str, value: Any) -> bool:
+    normalized = _normalize_name(name)
+    if normalized.endswith("_vars") or normalized.endswith("_expr_py"):
+        return False
+    return not _is_protected_name(normalized, value)
+
+
+def _collect_module_exports(module_env: dict[str, Any]) -> dict[str, Any]:
+    exports: dict[str, Any] = {}
+    for name, value in module_env.items():
+        normalized = _normalize_name(name)
+        if not _is_module_export(normalized, value):
+            continue
+        exports[normalized] = value
+    return exports
+
+
+def _merge_module_runtime_artifacts(module_obj: MathTeXModule, target_env: dict[str, Any]) -> None:
+    table_blocks = module_obj.env.get("_table_blocks")
+    if isinstance(table_blocks, dict) and table_blocks:
+        target_env.setdefault("_table_blocks", {}).update(table_blocks)
+    last_table = module_obj.env.get("last_table")
+    if last_table is not None:
+        target_env["last_table"] = last_table
+
+    plot_files = module_obj.env.get("_plot_files")
+    if isinstance(plot_files, dict) and plot_files:
+        target_env.setdefault("_plot_files", {}).update(plot_files)
+    plots = module_obj.env.get("plots")
+    if isinstance(plots, list) and plots:
+        target_env.setdefault("plots", []).extend(plots)
+    last_plot = module_obj.env.get("last_plot")
+    if last_plot is not None:
+        target_env["last_plot"] = last_plot
+
+
+def _load_module(module_name: str) -> MathTeXModule:
+    normalized_name = module_name.strip()
+    cached = _LOADED_MODULES.get(normalized_name)
+    if cached is not None:
+        return cached
+
+    target_path, blocked_mtex = _resolve_module_file(normalized_name)
     if target_path is None:
-        module_parts = [part for part in module.split(".") if part]
-        relative_module = Path(*module_parts) if module_parts else module_path
-        print(
-            f"Could not find {relative_module.with_suffix('.mtx')} "
-            f"or {relative_module.with_suffix('.mtex')} in the current working directory."
-        )
-        return
+        if blocked_mtex is not None:
+            raise MathTeXImportError(
+                f"ImportError: Cannot import document module '{normalized_name}'; only .mtx files are importable"
+            )
+        raise MathTeXImportError(f"ImportError: Module '{normalized_name}' not found")
 
-    _run_script_file(target_path, silent=True)
-    names = [_normalize_name(n) for n in names_raw.split(",") if n.strip()]
-    missing = [n for n in names if n not in env_ast]
+    cache_key = str(target_path)
+    cached_by_path = _MODULE_PATH_CACHE.get(cache_key)
+    if cached_by_path is not None:
+        _LOADED_MODULES[normalized_name] = cached_by_path
+        return cached_by_path
+
+    if cache_key in _MODULE_LOAD_PATH_STACK:
+        if normalized_name in _MODULE_LOAD_STACK:
+            cycle = _MODULE_LOAD_STACK[_MODULE_LOAD_STACK.index(normalized_name) :] + [normalized_name]
+        else:
+            cycle = _MODULE_LOAD_STACK + [normalized_name]
+        raise MathTeXImportError(f"ImportError: Circular import detected: {' -> '.join(cycle)}")
+
+    module_env: dict[str, Any] = {}
+    _MODULE_LOAD_STACK.append(normalized_name)
+    _MODULE_LOAD_PATH_STACK.append(cache_key)
+    try:
+        with _temporary_runtime_env(module_env, target_path.parent):
+            _run_script_file(target_path, silent=True)
+    finally:
+        _MODULE_LOAD_STACK.pop()
+        _MODULE_LOAD_PATH_STACK.pop()
+
+    module_obj = MathTeXModule(
+        name=normalized_name,
+        path=target_path,
+        exports=_collect_module_exports(module_env),
+        env=module_env,
+    )
+    _LOADED_MODULES[normalized_name] = module_obj
+    _MODULE_PATH_CACHE[cache_key] = module_obj
+    return module_obj
+
+
+def _parse_from_import_names(names_raw: str) -> list[str]:
+    raw_names = [name.strip() for name in names_raw.split(",") if name.strip()]
+    if not raw_names:
+        raise MathTeXImportError("ImportError: Missing imported symbol name")
+    if any(name == "*" for name in raw_names):
+        raise MathTeXImportError("ImportError: 'from module import *' is not supported")
+    normalized: list[str] = []
+    for raw_name in raw_names:
+        if not re.fullmatch(r"[A-Za-z_]\w*", raw_name):
+            raise MathTeXImportError(f"ImportError: Invalid imported symbol '{raw_name}'")
+        normalized.append(_normalize_name(raw_name))
+    return normalized
+
+
+def _handle_import(module: str) -> None:
+    module_obj = _load_module(module)
+    _merge_module_runtime_artifacts(module_obj, env_ast)
+    binding_name = _normalize_name(module.split(".")[-1])
+    env_ast[binding_name] = module_obj
+
+
+def _handle_from_import(module: str, names_raw: str) -> None:
+    module_obj = _load_module(module)
+    _merge_module_runtime_artifacts(module_obj, env_ast)
+    names = _parse_from_import_names(names_raw)
+    missing = [name for name in names if name not in module_obj.exports]
     if missing:
-        print(f"Warning: {', '.join(missing)} not defined in {target_path.name}.")
+        raise MathTeXImportError(f"ImportError: Module '{module_obj.name}' does not export '{missing[0]}'")
+    for name in names:
+        env_ast[name] = module_obj.exports[name]
 
 # ---------------------------
 # Graficador 3D

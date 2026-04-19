@@ -28,17 +28,17 @@ def repl() -> None:
         _print_missing_dependency_help()
         return
 
-    print("Welcome to MathTeX")
-    print("Type 'exit', or 'quit' to leave.\n")
+    print("Welcome to MathTeX Studio")
+    print("Type '\\exit', or '\\quit' to leave.\n")
 
     while True:
         try:
-            raw_input = input("MathTeX> ")
+            raw_input = input("MathTeX Studio> ")
         except (EOFError, KeyboardInterrupt):
             print("\nGoodbye!")
             break
 
-        if raw_input.strip().lower() in {"exit", "quit"}:
+        if raw_input.strip().lower() in {"\\exit", "\\quit"}:
             print("Goodbye!")
             break
 
@@ -62,7 +62,7 @@ def _qt_error_message() -> str:
 
 
 def _print_missing_dependency_help() -> None:
-    print("Could not start MathTeX because a required Python dependency is missing.")
+    print("Could not start MathTeX Studio because a required Python dependency is missing.")
     print(f"Python executable: {sys.executable}")
     if STARTUP_IMPORT_ERROR is not None:
         missing = getattr(STARTUP_IMPORT_ERROR, "name", None)

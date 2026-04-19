@@ -1,4 +1,4 @@
-function [x, iter, res] = blas(f, x0, tol)
+function [x, iter, res] = blas(a, b, c, f, x0, tol)
     x = x0;
     iter = 0;
     

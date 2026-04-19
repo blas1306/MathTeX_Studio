@@ -141,6 +141,7 @@ BASE_ENTRIES: tuple[CommandSuggestion, ...] = (
     _entry(r"\reset", "Reset the MathTeX environment.", "workspace"),
     _entry(r"\rg()", "Matrix rank.", "linear_algebra"),
     _entry(r"\rows()", "Number of rows of a matrix.", "linear_algebra"),
+    _entry(r"\run", "Run a .mtx script file.", "workspace", insert_text=r"\run ", signature=r"\run file.mtx"),
     _entry(r"\Schur()", "Schur decomposition of a matrix.", "linear_algebra"),
     _entry(r"\sign()", "Sign function.", "functions"),
     _entry(r"\sin()", "Sine function.", "functions"),

@@ -57,6 +57,68 @@ def test_menu_bar_switches_between_interactive_and_studio(
         qapp.processEvents()
 
 
+def test_main_tab_uses_mathlab_name_and_editor_runs_show_script_banner(
+    tmp_path: Path,
+    monkeypatch,
+    qapp,
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    window = MathTeXQtWindow()
+    script_path = tmp_path / "demo_script.mtx"
+    script_path.write_text("x = 1;\ny = 2;\n", encoding="utf-8")
+
+    try:
+        assert window.central_tabs is not None
+        assert window.central_tabs.tabText(0) == "MathLab"
+
+        window._open_mtex_in_script(script_path)
+        qapp.processEvents()
+        assert window.console_widget is not None
+        window.console_widget.clear()
+
+        window.run_script()
+        qapp.processEvents()
+        run_all_output = window.console_widget.output.toPlainText()
+        assert ">> demo_script.mtx" in run_all_output
+
+        window.console_widget.clear()
+        assert window.script_docs
+        editor = window.script_docs[0]["widget"]
+        editor.setFocus()
+        cursor = editor.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(len("x = 1;"), QtGui.QTextCursor.MoveMode.KeepAnchor)
+        editor.setTextCursor(cursor)
+
+        window.run_selection()
+        qapp.processEvents()
+        run_selection_output = window.console_widget.output.toPlainText()
+        assert ">> demo_script.mtx" in run_selection_output
+    finally:
+        window.close()
+        qapp.processEvents()
+
+
+def test_console_uses_studio_branding_and_mathlab_prompt(
+    tmp_path: Path,
+    monkeypatch,
+    qapp,
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    window = MathTeXQtWindow()
+
+    try:
+        assert window.windowTitle() == "MathTeX Studio"
+        assert window.console_widget is not None
+        console_text = window.console_widget.output.toPlainText()
+        assert "Welcome to MathTeX Studio" in console_text
+        assert "Type commands below or build a script in MathLab." in console_text
+        assert console_text.endswith("MathLab> ")
+    finally:
+        window.close()
+        qapp.processEvents()
+
+
 def test_studio_insert_menu_inserts_mathtex_block(
     tmp_path: Path,
     monkeypatch,

@@ -88,8 +88,11 @@ IMPORT_KEYWORD_COLOR = "#cc7832"
 IMPORT_MODULE_COLOR = "#ce9178"
 IMPORT_NAME_COLOR = "#9cdcfe"
 FUNCTION_PATTERN = re.compile(r"\\[A-Za-z][A-Za-z0-9_]*")
+IMPORT_PATTERN = re.compile(
+    r"\bimport\b\s+(?P<module>[A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*)"
+)
 FROM_IMPORT_PATTERN = re.compile(
-    r"\bfrom\b\s+(?P<module>[A-Za-z_][\w]*)\s+(?:\bimport\b(?:\s+(?P<names>[A-Za-z0-9_,\s]*))?)?"
+    r"\bfrom\b\s+(?P<module>[A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*)\s+(?:\bimport\b(?:\s+(?P<names>[A-Za-z0-9_,\s]*))?)?"
 )
 CODE_BLOCK_MARKER_PATTERN = re.compile(r"\\begin\{code\}|\\end\{code\}|\\codeblock|\\endcodeblock")
 
@@ -181,6 +184,29 @@ class MathSyntaxHighlighter(QtGui.QSyntaxHighlighter):  # type: ignore[misc]
             if _skipped(match.start()) or not _in_keyword_span(match.start()):
                 continue
             self.setFormat(match.start(), match.end() - match.start(), self._formats["keyword"])
+        for match in FUNCTION_PATTERN.finditer(text):
+            if _skipped(match.start()):
+                continue
+            self.setFormat(match.start(), match.end() - match.start(), self._formats["func"])
+        for match in NUMBER_PATTERN.finditer(text):
+            if _skipped(match.start()):
+                continue
+            self.setFormat(match.start(), match.end() - match.start(), self._formats["number"])
+        for match in PUNCT_PATTERN.finditer(text):
+            if _skipped(match.start()):
+                continue
+            self.setFormat(match.start(), match.end() - match.start(), self._formats["punct"])
+        for match in LOGICAL_OPERATOR_PATTERN.finditer(text):
+            if _skipped(match.start()) or not _in_keyword_span(match.start()):
+                continue
+            self.setFormat(match.start(), match.end() - match.start(), self._formats["keyword"])
+        for match in IMPORT_PATTERN.finditer(text):
+            if _skipped(match.start()) or not _in_keyword_span(match.start()):
+                continue
+            import_start = match.start()
+            self.setFormat(import_start, 6, self._formats["import_kw"])
+            mod_start, mod_end = match.span("module")
+            self.setFormat(mod_start, mod_end - mod_start, self._formats["import_mod"])
         for match in FROM_IMPORT_PATTERN.finditer(text):
             if _skipped(match.start()) or not _in_keyword_span(match.start()):
                 continue
@@ -203,22 +229,6 @@ class MathSyntaxHighlighter(QtGui.QSyntaxHighlighter):  # type: ignore[misc]
                     continue
                 self.setFormat(name_start, len(name), self._formats["import_name"])
                 search_pos = idx + len(name)
-        for match in FUNCTION_PATTERN.finditer(text):
-            if _skipped(match.start()):
-                continue
-            self.setFormat(match.start(), match.end() - match.start(), self._formats["func"])
-        for match in NUMBER_PATTERN.finditer(text):
-            if _skipped(match.start()):
-                continue
-            self.setFormat(match.start(), match.end() - match.start(), self._formats["number"])
-        for match in PUNCT_PATTERN.finditer(text):
-            if _skipped(match.start()):
-                continue
-            self.setFormat(match.start(), match.end() - match.start(), self._formats["punct"])
-        for match in LOGICAL_OPERATOR_PATTERN.finditer(text):
-            if _skipped(match.start()) or not _in_keyword_span(match.start()):
-                continue
-            self.setFormat(match.start(), match.end() - match.start(), self._formats["keyword"])
 
 
 class LineNumberArea(QtWidgets.QWidget):  # type: ignore[misc]
@@ -794,7 +804,7 @@ class ConsoleEdit(QtWidgets.QTextEdit):  # type: ignore[misc]
     """QTextEdit that allows typing directly in the console and sending with Enter."""
 
     submitted = _SubmitSignal()
-    PROMPT = "MathTeX> "
+    PROMPT = "MathLab> "
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -883,7 +893,7 @@ class ConsoleEdit(QtWidgets.QTextEdit):  # type: ignore[misc]
         self.ensure_prompt()
 
     def clear_console(self) -> None:
-        self.setPlainText("Welcome to MathTeX\nType commands below or build a script in the top panel.\n")
+        self.setPlainText("Welcome to MathTeX Studio\nType commands below or build a script in MathLab.\n")
         self._prompt_pos = len(self.toPlainText())
         self.ensure_prompt()
 
@@ -981,7 +991,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
     def __init__(self) -> None:
         super().__init__()
         set_plot_mode("interactive")
-        self.setWindowTitle("MathTeX")
+        self.setWindowTitle("MathTeX Studio")
         self.resize(1200, 720)
         self._temp_preview_dir = tempfile.TemporaryDirectory(prefix="mathtex_preview_")
         self._temp_preview_path = Path(self._temp_preview_dir.name)
@@ -1040,7 +1050,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
     # ----- UI -------------------------------------------------------------
     def _build_ui(self) -> None:
         central_tabs = QtWidgets.QTabWidget()
-        central_tabs.addTab(self._build_script_tab(), "Interactive Editor")
+        central_tabs.addTab(self._build_script_tab(), "MathLab")
         central_tabs.addTab(self._build_mtex_tab(), "MTeX Studio")
         central_tabs.currentChanged.connect(lambda _idx: self._handle_active_context_changed())
         self.central_tabs = central_tabs
@@ -1201,7 +1211,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             "studio_insert_figure": self._make_menu_action("Figure Skeleton", lambda: self._insert_named_mtex_snippet("figure")),
             "studio_insert_mathtex": self._make_menu_action("MathTeX Block", lambda: self._insert_named_mtex_snippet("mathtex")),
             "help_about": self._make_menu_action("About MathTeX", self._show_about_dialog),
-            "help_interactive": self._make_menu_action("Interactive Editor Help", self._show_interactive_help),
+            "help_interactive": self._make_menu_action("MathLab Help", self._show_interactive_help),
             "help_studio": self._make_menu_action("MTeX Studio Help", self._show_studio_help),
         }
 
@@ -1697,6 +1707,16 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         except Exception:
             pass
 
+    def _script_banner_name(self, doc: dict) -> str:
+        path = doc.get("path")
+        if path is not None:
+            try:
+                return Path(path).name
+            except Exception:
+                pass
+        name = str(doc.get("name") or "").strip()
+        return name or "untitled.mtx"
+
     def _build_console_dock(self) -> None:
         dock = QtWidgets.QDockWidget("Console", self)
         dock.setWidget(self.console_widget)
@@ -2108,7 +2128,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         if path is None:
             filename, _ = QtWidgets.QFileDialog.getOpenFileName(
                 self,
-                "Open .mtx File in Interactive Editor",
+                "Open .mtx File in MathLab",
                 str(get_working_dir()),
                 "MathTeX Files (*.mtx);;All Files (*)",
             )
@@ -2274,18 +2294,18 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             "About MathTeX",
             (
                 "MathTeX combines two workflows in one Qt app:\n\n"
-                "- Interactive Editor for .mtx scripts, console, workspace, and working directory.\n"
+                "- MathLab for .mtx scripts, console, workspace, and working directory.\n"
                 "- MTeX Studio for projects, .mtex documents, PDF preview, and build outputs."
             ),
         )
 
     def _show_interactive_help(self) -> None:
         if self._open_documentation_file("docs/guia_de_uso.md"):
-            self.append_output("[Help] Opened the MathTeX guide for the Interactive Editor workflow.")
+            self.append_output("[Help] Opened the MathTeX guide for the MathLab workflow.")
             return
         QtWidgets.QMessageBox.information(
             self,
-            "Interactive Editor Help",
+            "MathLab Help",
             "The guide file could not be opened. You can still use commands like \\help, \\who, \\whos, and \\clear from the console.",
         )
 
@@ -2357,7 +2377,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self._refresh_menu_bar_for_active_context()
 
     def _update_window_title(self) -> None:
-        self.setWindowTitle("MathTeX")
+        self.setWindowTitle("MathTeX Studio")
 
     def _project_root_dir(self) -> Path | None:
         if self.current_project is None:
@@ -2638,7 +2658,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
                     self,
                     "MathTeX",
                     "Only .mtex documents can be compiled to PDF in MTeX Studio.\n"
-                    "Open .mtx scripts in the Interactive Editor and use Run All instead.",
+                    "Open .mtx scripts in MathLab and use Run All instead.",
                 )
                 return None
             if not self._persist_mtex(path, announce=False):
@@ -2861,7 +2881,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         if not stripped:
             return True
         if echo:
-            self.append_output(f"MathTeX> {stripped}")
+            self.append_output(f"MathLab> {stripped}")
         out_buffer = io.StringIO()
         err_buffer = io.StringIO()
         try:
@@ -2892,7 +2912,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             self.console_widget.input.setFocus()
             return
         for line in lines:
-            self.append_output(f"MathTeX> {line}")
+            self.append_output(f"MathLab> {line}")
             self._execute_line(line, echo=False)
         self._append_prompt()
         self.console_widget.input.setFocus()
@@ -2911,6 +2931,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         reset_environment()
         self.refresh_workspace_view()
         self.append_output("[Running script]")
+        self.append_output(f">> {self._script_banner_name(doc)}")
         aborted = False
         try:
             for statement in statements:
@@ -2944,6 +2965,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             self.append_output("The selection is empty.")
             return
         self.append_output("[Running selection]")
+        self.append_output(f">> {self._script_banner_name(doc)}")
         aborted = False
         try:
             for statement in statements:

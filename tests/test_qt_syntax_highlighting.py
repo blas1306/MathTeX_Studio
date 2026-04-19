@@ -54,3 +54,30 @@ def test_mtex_keywords_are_highlighted_only_inside_code_blocks(qapp) -> None:
     assert not _has_color_at(editor, 5, 0, 2, "#a30101")
 
     editor.close()
+
+
+def test_import_statement_highlights_keyword_and_module_name(qapp) -> None:
+    editor = CodeEditor()
+    editor.set_autocomplete_document_kind("script")
+    editor.setPlainText("import metodo\n")
+    qapp.processEvents()
+
+    assert _has_color_at(editor, 0, 0, 6, "#cc7832")
+    assert _has_color_at(editor, 0, 7, 6, "#ce9178")
+
+    editor.close()
+
+
+def test_from_import_statement_highlights_dotted_module_and_imported_names(qapp) -> None:
+    editor = CodeEditor()
+    editor.set_autocomplete_document_kind("script")
+    editor.setPlainText("from metodos.newton import blas, otraFuncion\n")
+    qapp.processEvents()
+
+    assert _has_color_at(editor, 0, 0, 4, "#cc7832")
+    assert _has_color_at(editor, 0, 5, 14, "#ce9178")
+    assert _has_color_at(editor, 0, 20, 6, "#cc7832")
+    assert _has_color_at(editor, 0, 27, 4, "#9cdcfe")
+    assert _has_color_at(editor, 0, 33, 11, "#9cdcfe")
+
+    editor.close()

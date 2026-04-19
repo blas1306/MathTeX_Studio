@@ -42,6 +42,7 @@ class ImportSilenceTests(unittest.TestCase):
         self.assertIn("Nr", env_ast)
         self.assertNotIn("Function Nr defined.", captured)
         self.assertNotIn("[import]", captured)
+        self.assertNotIn(">> modtmp.mtx", captured)
 
     def test_from_import_supports_subdirectories_with_python_style_dots(self):
         previous_dir = get_working_dir()
@@ -76,6 +77,7 @@ class ImportSilenceTests(unittest.TestCase):
         self.assertIn("NewtonRaphson", env_ast)
         self.assertNotIn("Function NewtonRaphson defined.", captured)
         self.assertNotIn("[import]", captured)
+        self.assertNotIn(">> NR.mtx", captured)
 
     def test_from_import_executes_multiline_statements_in_mtx_files(self):
         previous_dir = get_working_dir()
@@ -112,6 +114,7 @@ class ImportSilenceTests(unittest.TestCase):
         self.assertEqual(env_ast["T"], "TablaDemo")
         self.assertIn("TablaDemo", env_ast.get("_table_blocks", {}))
         self.assertNotIn("Warning: T not defined", captured)
+        self.assertNotIn(">> tablas.mtx", captured)
 
 
 if __name__ == "__main__":
