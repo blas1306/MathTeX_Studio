@@ -2930,7 +2930,6 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             return
         reset_environment()
         self.refresh_workspace_view()
-        self.append_output("[Running script]")
         self.append_output(f">> {self._script_banner_name(doc)}")
         aborted = False
         try:
@@ -2941,8 +2940,6 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
                     aborted = True
                     self.append_output("[Execution stopped due to an error]\n")
                     break
-            if not aborted:
-                self.append_output("[Script finished]\n")
         finally:
             self._append_prompt()
             self.refresh_workspace_view()

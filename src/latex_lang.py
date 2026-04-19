@@ -3301,7 +3301,6 @@ def _execute_line_core(linea: str) -> None:
                 defining_env=env_ast,
             )
             env_ast[func_obj.name] = func_obj
-            print(f"Function {func_obj.name} defined.")
             _FUNC_BLOCK_ACTIVE = False
             _FUNC_DEF = None
             _FUNC_NEST_LEVEL = 0

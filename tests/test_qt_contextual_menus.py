@@ -80,6 +80,8 @@ def test_main_tab_uses_mathlab_name_and_editor_runs_show_script_banner(
         qapp.processEvents()
         run_all_output = window.console_widget.output.toPlainText()
         assert ">> demo_script.mtx" in run_all_output
+        assert "[Running script]" not in run_all_output
+        assert "[Script finished]" not in run_all_output
 
         window.console_widget.clear()
         assert window.script_docs
