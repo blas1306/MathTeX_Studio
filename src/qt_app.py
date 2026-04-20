@@ -1,7 +1,6 @@
 ﻿
 from __future__ import annotations
 
-import io
 import re
 import shutil
 import sys
@@ -16,20 +15,16 @@ from auto_compile import AutoCompileController, CompileTrigger
 from app_preferences import AppPreferences, AppPreferencesStore
 from autocomplete_engine import AutocompleteMatch, AutocompleteRequest, build_autocomplete_suggestions, detect_autocomplete_match
 from command_catalog import CommandSuggestion
+from console_engine import ConsoleEngine, MathRuntime, capture_to_events
 from diagnostics import diagnostic_line_offset
 from editor_pdf_sync import EditorPdfSyncMap
 from latex_lang import (
     env_ast,
-    ejecutar_linea,
-    register_console_clear_listener,
     register_plot_listener,
-    reset_environment,
     set_plot_mode,
-    unregister_console_clear_listener,
     unregister_plot_listener,
     change_working_dir,
     get_working_dir,
-    workspace_snapshot,
 )
 from mtex_executor import (
     ejecutar_mtex,
@@ -44,6 +39,7 @@ from pdf_preview import PdfPreviewWidget
 from project_outputs import ProjectOutputManager
 from project_system import ProjectInfo, ProjectManager, ProjectRegistry, default_projects_root
 from project_widgets import ProjectCreationDialog, ProjectHomeWidget, ProjectWorkspaceWidget
+from ui.console_widget import ConsoleWidget as DockConsoleWidget
 
 try:  # pragma: no cover - depende de la instalacion del usuario
     from PySide6 import QtCore, QtGui, QtWidgets  # type: ignore
@@ -797,196 +793,6 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
             self._handle_return()
 
 
-_SubmitSignal = QtCore.Signal  # type: ignore[attr-defined]
-
-
-class ConsoleEdit(QtWidgets.QTextEdit):  # type: ignore[misc]
-    """QTextEdit that allows typing directly in the console and sending with Enter."""
-
-    submitted = _SubmitSignal()
-    PROMPT = "MathLab> "
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.setAcceptRichText(False)
-        self.setMinimumHeight(160)
-        self.setStyleSheet(
-            """
-            QTextEdit {
-                background: #1b1b1d;
-                color: #f4f4f4;
-                font-family: Consolas;
-                font-size: 11pt;
-                border: 1px solid #3a3a3a;
-                border-radius: 4px;
-                padding: 4px;
-            }
-        """
-        )
-        self._prompt_pos = 0
-        self.clear_console()
-
-    # ----- Prompt helpers -------------------------------------------------
-    def ensure_prompt(self) -> None:
-        text = self.toPlainText()
-        cursor = self.textCursor()
-        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
-        if text and not text.endswith("\n") and not text.endswith(self.PROMPT):
-            cursor.insertText("\n")
-        if not text.endswith(self.PROMPT):
-            cursor.insertText(self.PROMPT)
-        self._prompt_pos = len(self.toPlainText())
-        self.setTextCursor(cursor)
-        self.ensureCursorVisible()
-
-    def remove_prompt(self) -> None:
-        text = self.toPlainText()
-        if not text.endswith(self.PROMPT):
-            return
-        cursor = self.textCursor()
-        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
-        cursor.movePosition(
-            QtGui.QTextCursor.MoveOperation.PreviousCharacter,
-            QtGui.QTextCursor.MoveMode.KeepAnchor,
-            len(self.PROMPT),
-        )
-        cursor.removeSelectedText()
-        self.setTextCursor(cursor)
-        self._prompt_pos = len(self.toPlainText())
-
-    def current_input(self) -> str:
-        return self.toPlainText()[self._prompt_pos :]
-
-    def clear_input(self) -> None:
-        cursor = self.textCursor()
-        cursor.setPosition(self._prompt_pos)
-        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End, QtGui.QTextCursor.MoveMode.KeepAnchor)
-        cursor.removeSelectedText()
-        self.setTextCursor(cursor)
-
-    # ----- Output helpers -------------------------------------------------
-    def append_output(self, text: str, ensure_newline: bool = True) -> None:
-        if not text:
-            return
-        self.remove_prompt()
-        cursor = self.textCursor()
-        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
-        cursor.insertText(text)
-        if ensure_newline and not text.endswith("\n"):
-            cursor.insertText("\n")
-        self.setTextCursor(cursor)
-        self.ensureCursorVisible()
-        self.ensure_prompt()
-
-    def append_image(self, pixmap: QtGui.QPixmap, caption: str) -> None:
-        max_width = 640
-        if pixmap.width() > max_width:
-            pixmap = pixmap.scaledToWidth(max_width, QtCore.Qt.TransformationMode.SmoothTransformation)
-        self.remove_prompt()
-        cursor = self.textCursor()
-        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
-        cursor.insertText(f"\n[Grafico: {caption}]\n")
-        cursor.insertImage(pixmap.toImage())
-        cursor.insertText("\n")
-        self.setTextCursor(cursor)
-        self.ensureCursorVisible()
-        self.ensure_prompt()
-
-    def clear_console(self) -> None:
-        self.setPlainText("Welcome to MathTeX Studio\nType commands below or build a script in MathLab.\n")
-        self._prompt_pos = len(self.toPlainText())
-        self.ensure_prompt()
-
-    # ----- Events ---------------------------------------------------------
-    def _is_cursor_before_prompt(self) -> bool:
-        return self.textCursor().position() < self._prompt_pos
-
-    def keyPressEvent(self, event):  # noqa: N802 - API Qt
-        key = event.key()
-        modifiers = event.modifiers()
-        is_modifier_only = key in {
-            QtCore.Qt.Key.Key_Control,
-            QtCore.Qt.Key.Key_Shift,
-            QtCore.Qt.Key.Key_Alt,
-            QtCore.Qt.Key.Key_Meta,
-            QtCore.Qt.Key.Key_AltGr,
-        }
-        is_copy_shortcut = event.matches(QtGui.QKeySequence.StandardKey.Copy)
-        is_cut_shortcut = event.matches(QtGui.QKeySequence.StandardKey.Cut)
-        is_select_all_shortcut = event.matches(QtGui.QKeySequence.StandardKey.SelectAll)
-        is_undo_shortcut = event.matches(QtGui.QKeySequence.StandardKey.Undo)
-        allows_readonly_selection = is_modifier_only or is_copy_shortcut or is_cut_shortcut or is_select_all_shortcut
-
-        if is_undo_shortcut:
-            event.accept()
-            return
-
-        if key in (QtCore.Qt.Key.Key_Return, QtCore.Qt.Key.Key_Enter) and not (
-            modifiers & QtCore.Qt.KeyboardModifier.ShiftModifier
-        ):
-            self.submitted.emit()
-            event.accept()
-            return
-
-        if key == QtCore.Qt.Key.Key_Home and not allows_readonly_selection:
-            cursor = self.textCursor()
-            cursor.setPosition(self._prompt_pos)
-            self.setTextCursor(cursor)
-            event.accept()
-            return
-
-        if key == QtCore.Qt.Key.Key_Backspace and self._is_cursor_before_prompt():
-            event.ignore()
-            return
-
-        if key == QtCore.Qt.Key.Key_Left and self._is_cursor_before_prompt():
-            event.ignore()
-            return
-
-        cursor = self.textCursor()
-        if cursor.hasSelection():
-            sel_start = min(cursor.selectionStart(), cursor.selectionEnd())
-            if sel_start < self._prompt_pos and not allows_readonly_selection:
-                cursor.clearSelection()
-                cursor.setPosition(self._prompt_pos)
-                self.setTextCursor(cursor)
-                event.accept()
-                return
-
-        super().keyPressEvent(event)
-        if self._is_cursor_before_prompt() and not allows_readonly_selection:
-            cursor = self.textCursor()
-            cursor.setPosition(self._prompt_pos)
-            self.setTextCursor(cursor)
-
-
-class ConsoleWidget(QtWidgets.QWidget):  # type: ignore[misc]
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(6, 6, 6, 6)
-        self.output = ConsoleEdit(self)
-        # Compatibility with the rest of the code
-        self.input = self.output
-        self.send_btn = QtWidgets.QPushButton("Send", self)
-        self.clear_btn = QtWidgets.QPushButton("Clear", self)
-        buttons = QtWidgets.QHBoxLayout()
-        buttons.addStretch()
-        buttons.addWidget(self.send_btn)
-        buttons.addWidget(self.clear_btn)
-        layout.addWidget(self.output, 1)
-        layout.addLayout(buttons)
-
-    def append_output(self, text: str, ensure_newline: bool = True) -> None:
-        self.output.append_output(text, ensure_newline=ensure_newline)
-
-    def append_image(self, pixmap: QtGui.QPixmap, caption: str) -> None:
-        self.output.append_image(pixmap, caption)
-
-    def clear(self) -> None:
-        self.output.clear_console()
-
-
 class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
     def __init__(self) -> None:
         super().__init__()
@@ -996,8 +802,9 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self._temp_preview_dir = tempfile.TemporaryDirectory(prefix="mathtex_preview_")
         self._temp_preview_path = Path(self._temp_preview_dir.name)
         self._temp_preview_path.mkdir(parents=True, exist_ok=True)
+        self.runtime = MathRuntime()
+        self.console_engine = ConsoleEngine(self.runtime, prompt="MathLab> ")
         self._plot_listener_registered = False
-        self._console_clear_listener_registered = False
         self._plot_windows: list[QtWidgets.QMainWindow] = []
         self._untitled_counter = 1
         self.project_manager = ProjectManager()
@@ -1036,7 +843,6 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self.workspace_table: QtWidgets.QTableWidget | None = None
         self._menu_actions: dict[str, QtGui.QAction] = {}
         self._register_plot_listener()
-        self._register_console_clear_listener()
         self._build_ui()
         self._restore_ui_preferences()
         self._set_build_status("Build: Ready")
@@ -1057,10 +863,8 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self.setCentralWidget(central_tabs)
         self._init_restore_buttons()
 
-        self.console_widget = ConsoleWidget(self)
-        self.console_widget.send_btn.clicked.connect(self.run_command)
-        self.console_widget.clear_btn.clicked.connect(self.console_widget.clear)
-        self.console_widget.input.submitted.connect(self.run_command)
+        self.console_widget = DockConsoleWidget(self.console_engine, self)
+        self.console_widget.executed.connect(self.refresh_workspace_view)
         self._initialize_menu_actions()
         if self.project_workspace_widget is not None:
             self.project_workspace_widget.set_sync_actions(
@@ -1292,7 +1096,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
                 "edit_select_all",
             ],
         )
-        self._add_menu(
+        view_menu = self._add_menu(
             menu_bar,
             "View",
             [
@@ -1303,6 +1107,11 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
                 "interactive_reset_layout",
             ],
         )
+        if self.console_dock is not None:
+            view_menu.addSeparator()
+            toggle_action = self.console_dock.toggleViewAction()
+            toggle_action.setText("Console")
+            view_menu.addAction(toggle_action)
         self._add_menu(
             menu_bar,
             "Run",
@@ -1696,16 +1505,10 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self.console_widget.append_output(text, ensure_newline=ensure_newline)
 
     def _remove_trailing_prompt(self) -> None:
-        try:
-            self.console_widget.output.remove_prompt()
-        except Exception:
-            pass
+        return
 
     def _append_prompt(self) -> None:
-        try:
-            self.console_widget.output.ensure_prompt()
-        except Exception:
-            pass
+        return
 
     def _script_banner_name(self, doc: dict) -> str:
         path = doc.get("path")
@@ -1720,23 +1523,17 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
     def _build_console_dock(self) -> None:
         dock = QtWidgets.QDockWidget("Console", self)
         dock.setWidget(self.console_widget)
-        dock.setObjectName("consoleDock")
+        dock.setObjectName("ConsoleDock")
+        dock.setAllowedAreas(
+            QtCore.Qt.DockWidgetArea.BottomDockWidgetArea
+            | QtCore.Qt.DockWidgetArea.LeftDockWidgetArea
+            | QtCore.Qt.DockWidgetArea.RightDockWidgetArea
+        )
         dock.setFeatures(
             QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetMovable
             | QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetFloatable
+            | QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetClosable
         )
-        title = QtWidgets.QWidget()
-        title_layout = QtWidgets.QHBoxLayout(title)
-        title_layout.setContentsMargins(6, 2, 6, 2)
-        title_label = QtWidgets.QLabel("Console")
-        toggle_btn = QtWidgets.QPushButton("Undock")
-        toggle_btn.setFixedHeight(22)
-        toggle_btn.clicked.connect(self._toggle_console_dock)
-        self.console_toggle_btn = toggle_btn
-        title_layout.addWidget(title_label)
-        title_layout.addStretch()
-        title_layout.addWidget(toggle_btn)
-        dock.setTitleBarWidget(title)
         self.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, dock)
         dock.topLevelChanged.connect(lambda _f: self._on_console_dock_state_changed())
         dock.visibilityChanged.connect(lambda _v: self._on_console_dock_state_changed())
@@ -1910,7 +1707,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
 
     def refresh_workspace_view(self) -> None:
         try:
-            items = workspace_snapshot()
+            items = self.runtime.workspace_snapshot()
         except Exception:
             items = []
         table = self.workspace_table
@@ -1941,7 +1738,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
     def _create_script_document(self, name: str, path: Path | None, content: str, announce: bool) -> None:
         editor = CodeEditor(enable_autocomplete=True)
         editor.set_autocomplete_document_kind("script")
-        editor.set_autocomplete_workspace_provider(workspace_snapshot)
+        editor.set_autocomplete_workspace_provider(self.runtime.workspace_snapshot)
         editor.setPlainText(content)
         editor.textChanged.connect(lambda e=editor: self._mark_script_dirty(e))
         idx = self.script_tab_widget.addTab(editor, name)
@@ -2729,7 +2526,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
 
     def _capture_current_variable_summaries(self):
         try:
-            return variable_summaries_from_snapshot(workspace_snapshot())
+            return variable_summaries_from_snapshot(self.runtime.workspace_snapshot())
         except Exception:
             return []
 
@@ -2850,71 +2647,19 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             return
         self.append_output(f"[MTeX] PDF exportado a {destination}")
     # ----- Ejecucion ------------------------------------------------------
-    def _looks_like_error(self, text: str) -> bool:
-        error_prefixes = (
-            "error",
-            "parse error",
-            "block error",
-            "runtime error",
-            "build error",
-            "syntax error",
-            "usage",
-            "warning",
-            "invalid",
-        )
-        for line in text.splitlines():
-            stripped = line.strip()
-            if not stripped:
-                continue
-            # Evita falsos positivos en asignaciones tipo "error = 0"
-            if re.match(r"^[A-Za-z_]\w*\s*=", stripped):
-                continue
-            lowered = stripped.lower()
-            if any(lowered.startswith(prefix) for prefix in error_prefixes):
-                return True
-            if "error:" in lowered:
-                return True
-        return False
-
     def _execute_line(self, line: str, echo: bool = True) -> bool:
         stripped = line.strip()
         if not stripped:
             return True
         if echo:
-            self.append_output(f"MathLab> {stripped}")
-        out_buffer = io.StringIO()
-        err_buffer = io.StringIO()
-        try:
-            with redirect_stdout(out_buffer), redirect_stderr(err_buffer):
-                ejecutar_linea(stripped)
-        except Exception as exc:  # pragma: no cover - defensivo
-            err_buffer.write(f"Unexpected error: {exc}\n")
-        output = out_buffer.getvalue()
-        errors = err_buffer.getvalue()
-        has_error = False
-        if output:
-            self.append_output(output, ensure_newline=False)
-            if self._looks_like_error(output):
-                has_error = True
-        if errors:
-            self.append_output(errors, ensure_newline=False)
-            has_error = True
+            self.append_output(f"{self.console_engine.prompt}{stripped}")
+        events = capture_to_events(self.runtime.execute_console_line(stripped))
+        self.console_widget.render_events(events)
         self.refresh_workspace_view()
-        return not has_error
+        return not any(event.kind == "error" for event in events)
 
     def run_command(self) -> None:
-        comando = self.console_widget.output.current_input().strip("\n")
-        self.console_widget.output.clear_input()
-        self._remove_trailing_prompt()
-        lines = split_code_statements(comando)
-        if not lines:
-            self._append_prompt()
-            self.console_widget.input.setFocus()
-            return
-        for line in lines:
-            self.append_output(f"MathLab> {line}")
-            self._execute_line(line, echo=False)
-        self._append_prompt()
+        self.console_widget.submit_current_input()
         self.console_widget.input.setFocus()
 
     def run_script(self) -> None:
@@ -2928,7 +2673,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         if not statements:
             self.append_output("There is no code to run.")
             return
-        reset_environment()
+        self.runtime.reset_environment()
         self.refresh_workspace_view()
         self.append_output(f">> {self._script_banner_name(doc)}")
         aborted = False
@@ -2997,29 +2742,6 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             pass
         finally:
             self._plot_listener_registered = False
-
-    def _register_console_clear_listener(self) -> None:
-        if self._console_clear_listener_registered:
-            return
-        try:
-            register_console_clear_listener(self._handle_console_clean)
-            self._console_clear_listener_registered = True
-        except Exception:
-            self._console_clear_listener_registered = False
-
-    def _unregister_console_clear_listener(self) -> None:
-        if not self._console_clear_listener_registered:
-            return
-        try:
-            unregister_console_clear_listener(self._handle_console_clean)
-        except Exception:
-            pass
-        finally:
-            self._console_clear_listener_registered = False
-
-    def _handle_console_clean(self) -> None:
-        if self.console_widget is not None:
-            self.console_widget.clear()
 
     def _handle_plot_generated(self, filepath: str, plot_name: str | None) -> None:
         path = Path(filepath)
@@ -3126,7 +2848,6 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             event.ignore()
             return
         self._unregister_plot_listener()
-        self._unregister_console_clear_listener()
         for win in list(self._plot_windows):
             try:
                 win.close()
