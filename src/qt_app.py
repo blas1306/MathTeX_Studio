@@ -79,6 +79,20 @@ STRING_COLOR = "#f7dc6f"
 NUMBER_COLOR = "#45b39d"
 PUNCT_COLOR = "#000000"
 SELECT_BG = "rgba(255, 159, 59, 110)"  # tono calido con algo de transparencia
+MATHLAB_EDITOR_BG = "#1e1e1e"
+MATHLAB_PANEL_BG = "#252526"
+MATHLAB_TOOLBAR_BG = "#2d2d2d"
+MATHLAB_BORDER = "#3c3c3c"
+MATHLAB_MUTED_TEXT = "#9da7b1"
+MATHLAB_TEXT = "#e3e6ea"
+MATHLAB_OUTPUT_TEXT = "#d4d4d4"
+MATHLAB_STATUS_PALETTE = {
+    "neutral": ("#d6d6d6", "#2f3a40", "#54606b"),
+    "info": ("#d9ecff", "#1f3a56", "#4f8cc9"),
+    "success": ("#daf5d4", "#234a2b", "#5ea36b"),
+    "warning": ("#fff2cf", "#5a4217", "#d5a84a"),
+    "error": ("#ffd7d7", "#5a2222", "#d47b7b"),
+}
 FUNC_COLOR = "#3d5afe"
 IMPORT_KEYWORD_COLOR = "#cc7832"
 IMPORT_MODULE_COLOR = "#ce9178"
@@ -389,13 +403,13 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
         self._autocomplete_document_kind = "script"
         self._autocomplete_workspace_provider: Callable[[], list[dict[str, str]]] | None = None
         self._autocomplete_ignored_cursor_hides = 0
+        self._surface_bg = EDITOR_BG
+        self._line_number_fg = "#b0b0b0"
+        self._current_line_bg = "#404040"
         self.setTabChangesFocus(False)
         self.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
         self.setFont(QtGui.QFont("Consolas", 11))
-        palette = self.palette()
-        palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor(EDITOR_BG))
-        palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(TEXT_FG))
-        self.setPalette(palette)
+        self._apply_surface_palette()
         self.setStyleSheet(
             f"""
             QPlainTextEdit {{
@@ -417,6 +431,27 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
             self.horizontalScrollBar().valueChanged.connect(lambda _value: self._reposition_autocomplete())
         self.update_line_number_area_width(0)
         self.highlight_current_line()
+
+    def _apply_surface_palette(self) -> None:
+        palette = self.palette()
+        palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor(self._surface_bg))
+        palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(TEXT_FG))
+        self.setPalette(palette)
+
+    def set_surface_theme(
+        self,
+        *,
+        background: str,
+        line_number_color: str = "#b0b0b0",
+        current_line_color: str = "#404040",
+    ) -> None:
+        self._surface_bg = background
+        self._line_number_fg = line_number_color
+        self._current_line_bg = current_line_color
+        self._apply_surface_palette()
+        self.line_number_area.update()
+        self.highlight_current_line()
+        self.viewport().update()
 
     def line_number_area_width(self) -> int:
         digits = max(2, len(str(max(1, self.blockCount()))))
@@ -442,7 +477,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
 
     def line_number_area_paint_event(self, event) -> None:
         painter = QtGui.QPainter(self.line_number_area)
-        painter.fillRect(event.rect(), QtGui.QColor(EDITOR_BG))
+        painter.fillRect(event.rect(), QtGui.QColor(self._surface_bg))
         block = self.firstVisibleBlock()
         block_number = block.blockNumber()
         top = int(self.blockBoundingGeometry(block).translated(self.contentOffset()).top())
@@ -450,7 +485,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
         while block.isValid() and top <= event.rect().bottom():
             if block.isVisible() and bottom >= event.rect().top():
                 number = str(block_number + 1)
-                painter.setPen(QtGui.QColor("#b0b0b0"))
+                painter.setPen(QtGui.QColor(self._line_number_fg))
                 painter.drawText(
                     0,
                     top,
@@ -468,7 +503,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
         if self.isReadOnly():
             return
         selection = QtWidgets.QTextEdit.ExtraSelection()
-        line_color = QtGui.QColor("#404040")
+        line_color = QtGui.QColor(self._current_line_bg)
         line_color.setAlpha(80)
         selection.format.setBackground(line_color)  # type: ignore[attr-defined]
         selection.format.setProperty(QtGui.QTextFormat.Property.FullWidthSelection, True)  # type: ignore[attr-defined]
@@ -837,6 +872,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self.console_dock: QtWidgets.QDockWidget | None = None
         self.console_toggle_btn: QtWidgets.QPushButton | None = None
         self.console_restore_btn: QtWidgets.QPushButton | None = None
+        self.runtime_status_label: QtWidgets.QLabel | None = None
         self.central_tabs: QtWidgets.QTabWidget | None = None
         self.dir_combo: QtWidgets.QComboBox | None = None
         self.workspace_dock: QtWidgets.QDockWidget | None = None
@@ -844,6 +880,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self._menu_actions: dict[str, QtGui.QAction] = {}
         self._register_plot_listener()
         self._build_ui()
+        self._apply_mathlab_stylesheet()
         self._restore_ui_preferences()
         self._set_build_status("Build: Ready")
         self.console_widget.clear()
@@ -864,6 +901,8 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self._init_restore_buttons()
 
         self.console_widget = DockConsoleWidget(self.console_engine, self)
+        self.console_widget.command_started.connect(self._on_console_command_started)
+        self.console_widget.command_finished.connect(self._on_console_command_finished)
         self.console_widget.executed.connect(self.refresh_workspace_view)
         self._initialize_menu_actions()
         if self.project_workspace_widget is not None:
@@ -876,11 +915,215 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
     def _init_restore_buttons(self) -> None:
         status = self.statusBar()
         status.setSizeGripEnabled(False)
+        self.runtime_status_label = QtWidgets.QLabel("Ready")
+        self.runtime_status_label.setMinimumWidth(92)
+        self.runtime_status_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        status.addPermanentWidget(self.runtime_status_label)
+        self._set_runtime_status("Ready", tone="neutral", message="Ready")
         self.console_restore_btn = QtWidgets.QPushButton("Restore Console to Panel")
+        self.console_restore_btn.setObjectName("mathLabStatusButton")
         if self.console_restore_btn is not None:
             self.console_restore_btn.setVisible(False)
             self.console_restore_btn.clicked.connect(self._restore_console_dock)
             status.addPermanentWidget(self.console_restore_btn)
+
+    def _apply_mathlab_stylesheet(self) -> None:
+        self.setStyleSheet(
+            f"""
+            QStatusBar {{
+                background: #20242a;
+                color: {MATHLAB_TEXT};
+                border-top: 1px solid #333942;
+            }}
+            QStatusBar::item {{
+                border: none;
+            }}
+            QPushButton#mathLabStatusButton {{
+                background: #262b31;
+                border: 1px solid #3a424c;
+                border-radius: 6px;
+                color: #d7dce1;
+                padding: 4px 10px;
+            }}
+            QPushButton#mathLabStatusButton:hover {{
+                background: #2d333a;
+                border-color: #4b5561;
+            }}
+            QFrame#mathLabToolbarCard {{
+                background: {MATHLAB_TOOLBAR_BG};
+                border: 1px solid {MATHLAB_BORDER};
+                border-radius: 10px;
+            }}
+            QFrame#mathLabPanel,
+            QFrame#mathLabPanelMuted,
+            QFrame#mathLabPanelPrimary {{
+                background: {MATHLAB_PANEL_BG};
+                border-radius: 10px;
+            }}
+            QFrame#mathLabPanel {{
+                border: 1px solid {MATHLAB_BORDER};
+            }}
+            QFrame#mathLabPanelMuted {{
+                border: 1px solid #44484f;
+            }}
+            QFrame#mathLabPanelPrimary {{
+                border: 1px solid #4a4f58;
+            }}
+            QLabel#mathLabPanelTitle {{
+                color: {MATHLAB_TEXT};
+                background: transparent;
+                border: none;
+                font-size: 13px;
+                font-weight: 600;
+            }}
+            QLabel#mathLabPanelSubtitle {{
+                color: {MATHLAB_MUTED_TEXT};
+                background: transparent;
+                border: none;
+                font-size: 11px;
+            }}
+            QLabel#mathLabToolbarTitle {{
+                color: {MATHLAB_TEXT};
+                background: transparent;
+                border: none;
+                font-size: 14px;
+                font-weight: 600;
+            }}
+            QLabel#mathLabToolbarSubtitle {{
+                color: {MATHLAB_MUTED_TEXT};
+                background: transparent;
+                border: none;
+                font-size: 11px;
+            }}
+            QToolButton#mathLabToolbarIconButton,
+            QToolButton#mathLabToolbarUtilityButton,
+            QFrame#mathLabPanel QPushButton,
+            QFrame#mathLabPanelMuted QPushButton,
+            QFrame#mathLabPanelPrimary QPushButton {{
+                background: #262b31;
+                border: 1px solid #3a424c;
+                border-radius: 6px;
+                color: #d7dce1;
+            }}
+            QToolButton#mathLabToolbarIconButton:hover,
+            QToolButton#mathLabToolbarUtilityButton:hover,
+            QFrame#mathLabPanel QPushButton:hover,
+            QFrame#mathLabPanelMuted QPushButton:hover,
+            QFrame#mathLabPanelPrimary QPushButton:hover {{
+                background: #2d333a;
+                border-color: #4b5561;
+            }}
+            QToolButton#mathLabToolbarUtilityButton {{
+                padding: 3px 6px;
+            }}
+            QTabWidget#mathLabScriptTabs::pane {{
+                background: #20252a;
+                border: 1px solid {MATHLAB_BORDER};
+                border-radius: 10px;
+                top: -1px;
+            }}
+            QTabWidget#mathLabScriptTabs QTabBar::tab {{
+                background: #262b31;
+                color: {MATHLAB_MUTED_TEXT};
+                border: 1px solid {MATHLAB_BORDER};
+                border-bottom: none;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                padding: 7px 12px;
+                margin-right: 3px;
+            }}
+            QTabWidget#mathLabScriptTabs QTabBar::tab:selected {{
+                background: {MATHLAB_EDITOR_BG};
+                color: {MATHLAB_TEXT};
+            }}
+            QDockWidget#ConsoleDock::title,
+            QDockWidget#workspaceDock::title {{
+                background: #20242a;
+                color: {MATHLAB_TEXT};
+                border: 1px solid #333942;
+                padding: 4px 8px;
+            }}
+            QTableWidget#mathLabWorkspaceTable {{
+                background: #1b1f24;
+                alternate-background-color: #20252b;
+                color: {MATHLAB_TEXT};
+                border: 1px solid #313740;
+                border-radius: 7px;
+                gridline-color: #313740;
+                padding: 4px;
+            }}
+            QTableWidget#mathLabWorkspaceTable::item {{
+                padding: 4px 2px;
+            }}
+            QTableWidget#mathLabWorkspaceTable QHeaderView::section {{
+                background: #262b31;
+                color: {MATHLAB_MUTED_TEXT};
+                border: 1px solid #3a424c;
+                padding: 4px 6px;
+            }}
+            QWidget#mathLabPlotRoot {{
+                background: #181b1f;
+            }}
+        """
+        )
+
+    def _create_mathlab_panel(
+        self,
+        title: str,
+        subtitle: str,
+        content: QtWidgets.QWidget,
+        *,
+        variant: str = "default",
+    ) -> QtWidgets.QFrame:
+        frame = QtWidgets.QFrame()
+        frame.setObjectName(
+            {
+                "muted": "mathLabPanelMuted",
+                "primary": "mathLabPanelPrimary",
+            }.get(variant, "mathLabPanel")
+        )
+        layout = QtWidgets.QVBoxLayout(frame)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+        header = QtWidgets.QVBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(2)
+        title_label = QtWidgets.QLabel(title)
+        title_label.setObjectName("mathLabPanelTitle")
+        subtitle_label = QtWidgets.QLabel(subtitle)
+        subtitle_label.setObjectName("mathLabPanelSubtitle")
+        header.addWidget(title_label)
+        header.addWidget(subtitle_label)
+        layout.addLayout(header)
+        layout.addWidget(content, 1)
+        return frame
+
+    def _set_runtime_status(self, state: str, *, tone: str = "neutral", message: str | None = None) -> None:
+        fg, bg, border = MATHLAB_STATUS_PALETTE.get(tone, MATHLAB_STATUS_PALETTE["neutral"])
+        if self.runtime_status_label is not None:
+            self.runtime_status_label.setText(state)
+            self.runtime_status_label.setStyleSheet(
+                f"""
+                QLabel {{
+                    color: {fg};
+                    background: {bg};
+                    border: 1px solid {border};
+                    border-radius: 11px;
+                    padding: 3px 10px;
+                    font-weight: 600;
+                }}
+            """
+            )
+        self.statusBar().showMessage(message or state)
+
+    def _on_console_command_started(self, _command: str) -> None:
+        self._set_runtime_status("Running", tone="info", message="Running MathLab command...")
+
+    def _on_console_command_finished(self, success: bool) -> None:
+        if success:
+            self._set_runtime_status("Done", tone="success", message="Command completed.")
+            return
+        self._set_runtime_status("Error", tone="error", message="Command completed with errors.")
 
     def _theme_icon(
         self,
@@ -937,6 +1180,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
 
     def _make_script_icon_button(self, icon: QtGui.QIcon, tooltip: str) -> QtWidgets.QToolButton:
         button = QtWidgets.QToolButton()
+        button.setObjectName("mathLabToolbarIconButton")
         button.setAutoRaise(False)
         button.setText("")
         button.setToolTip(tooltip)
@@ -1299,10 +1543,27 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
+        toolbar_card = QtWidgets.QFrame()
+        toolbar_card.setObjectName("mathLabToolbarCard")
+        toolbar_layout = QtWidgets.QVBoxLayout(toolbar_card)
+        toolbar_layout.setContentsMargins(10, 10, 10, 10)
+        toolbar_layout.setSpacing(8)
+
+        toolbar_header = QtWidgets.QVBoxLayout()
+        toolbar_header.setContentsMargins(0, 0, 0, 0)
+        toolbar_header.setSpacing(2)
+        toolbar_title = QtWidgets.QLabel("MathLab")
+        toolbar_title.setObjectName("mathLabToolbarTitle")
+        toolbar_subtitle = QtWidgets.QLabel("Working directory and execution shortcuts")
+        toolbar_subtitle.setObjectName("mathLabToolbarSubtitle")
+        toolbar_header.addWidget(toolbar_title)
+        toolbar_header.addWidget(toolbar_subtitle)
+        toolbar_layout.addLayout(toolbar_header)
+
         directory_row = QtWidgets.QHBoxLayout()
         directory_row.setSpacing(6)
         directory_label = QtWidgets.QLabel("Working Directory:")
-        directory_label.setStyleSheet("color: #d8d8d8;")
+        directory_label.setStyleSheet(f"color: {MATHLAB_MUTED_TEXT};")
         directory_row.addWidget(directory_label)
 
         self.dir_combo = QtWidgets.QComboBox()
@@ -1314,22 +1575,22 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
         self.dir_combo.setStyleSheet(
-            """
-            QComboBox {
-                background: #2f2f2f;
-                color: #f2f2f2;
-                border: 1px solid #505050;
+            f"""
+            QComboBox {{
+                background: #262b31;
+                color: {MATHLAB_TEXT};
+                border: 1px solid #3a424c;
                 border-radius: 4px;
                 padding: 3px 8px;
-            }
-            QComboBox:focus {
-                border: 1px solid #7aa2f7;
-            }
-            QComboBox QAbstractItemView {
-                background: #2b2b2b;
-                color: #f2f2f2;
-                selection-background-color: #444c5a;
-            }
+            }}
+            QComboBox:focus {{
+                border: 1px solid #4f8cc9;
+            }}
+            QComboBox QAbstractItemView {{
+                background: #1f2328;
+                color: {MATHLAB_TEXT};
+                selection-background-color: #2d333a;
+            }}
         """
         )
         self.dir_combo.activated.connect(lambda _idx: self._apply_working_dir_from_text(self.dir_combo.currentText()))
@@ -1340,6 +1601,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
 
         style = self.style()
         up_btn = QtWidgets.QToolButton()
+        up_btn.setObjectName("mathLabToolbarUtilityButton")
         up_btn.setToolTip("Go up one level")
         up_btn.setAutoRaise(True)
         up_btn.setIcon(style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_ArrowUp))
@@ -1347,12 +1609,13 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         directory_row.addWidget(up_btn)
 
         browse_btn = QtWidgets.QToolButton()
+        browse_btn.setObjectName("mathLabToolbarUtilityButton")
         browse_btn.setToolTip("Choose directory")
         browse_btn.setAutoRaise(True)
         browse_btn.setIcon(style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DirClosedIcon))
         browse_btn.clicked.connect(self._select_directory)
         directory_row.addWidget(browse_btn)
-        layout.addLayout(directory_row)
+        toolbar_layout.addLayout(directory_row)
 
         buttons = QtWidgets.QHBoxLayout()
         buttons.setSpacing(6)
@@ -1394,13 +1657,21 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         buttons.addWidget(run_all)
         buttons.addWidget(run_sel)
         buttons.addStretch()
-        layout.addLayout(buttons)
+        toolbar_layout.addLayout(buttons)
+        layout.addWidget(toolbar_card)
 
         self.script_tab_widget = QtWidgets.QTabWidget()
+        self.script_tab_widget.setObjectName("mathLabScriptTabs")
         self.script_tab_widget.setTabsClosable(True)
         self.script_tab_widget.tabCloseRequested.connect(self._request_close_script_tab)
         self.script_tab_widget.currentChanged.connect(lambda _idx: self._refresh_menu_bar_for_active_context())
-        layout.addWidget(self.script_tab_widget, 1)
+        editor_panel = self._create_mathlab_panel(
+            "Editor",
+            "Edit and run the active .mtx script",
+            self.script_tab_widget,
+            variant="primary",
+        )
+        layout.addWidget(editor_panel, 1)
 
         run_all.clicked.connect(self.run_script)
         run_sel.clicked.connect(self.run_selection)
@@ -1522,7 +1793,14 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
 
     def _build_console_dock(self) -> None:
         dock = QtWidgets.QDockWidget("Console", self)
-        dock.setWidget(self.console_widget)
+        dock.setWidget(
+            self._create_mathlab_panel(
+                "Console",
+                "MathLab command input and output",
+                self.console_widget,
+                variant="muted",
+            )
+        )
         dock.setObjectName("ConsoleDock")
         dock.setAllowedAreas(
             QtCore.Qt.DockWidgetArea.BottomDockWidgetArea
@@ -1673,10 +1951,8 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetMovable
             | QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetFloatable
         )
-        container = QtWidgets.QWidget()
-        layout = QtWidgets.QVBoxLayout(container)
-        layout.setContentsMargins(8, 8, 8, 8)
         table = QtWidgets.QTableWidget()
+        table.setObjectName("mathLabWorkspaceTable")
         table.setColumnCount(4)
         table.setHorizontalHeaderLabels(["Name", "Type", "Size", "Summary"])
         table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -1686,8 +1962,13 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         table.setAlternatingRowColors(True)
         table.setSortingEnabled(True)
         self._apply_workspace_column_layout(table)
-        layout.addWidget(table)
-        dock.setWidget(container)
+        dock.setWidget(
+            self._create_mathlab_panel(
+                "Workspace",
+                "Variables and values from the current session",
+                table,
+            )
+        )
         self.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, dock)
         if self.console_dock is not None:
             self.splitDockWidget(self.console_dock, dock, QtCore.Qt.Orientation.Horizontal)
@@ -1739,6 +2020,11 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         editor = CodeEditor(enable_autocomplete=True)
         editor.set_autocomplete_document_kind("script")
         editor.set_autocomplete_workspace_provider(self.runtime.workspace_snapshot)
+        editor.set_surface_theme(
+            background=MATHLAB_EDITOR_BG,
+            line_number_color="#858585",
+            current_line_color="#2b3036",
+        )
         editor.setPlainText(content)
         editor.textChanged.connect(lambda e=editor: self._mark_script_dirty(e))
         idx = self.script_tab_widget.addTab(editor, name)
@@ -2001,7 +2287,14 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
     def _set_build_status(self, text: str, tone: str = "neutral") -> None:
         if self.project_workspace_widget is not None:
             self.project_workspace_widget.set_build_status(text, tone=tone)
-        self.statusBar().showMessage(text)
+        state = {
+            "neutral": ("Ready", "neutral"),
+            "info": ("Running", "info"),
+            "success": ("Done", "success"),
+            "warning": ("Error", "warning"),
+            "error": ("Error", "error"),
+        }.get(tone, ("Ready", "neutral"))
+        self._set_runtime_status(state[0], tone=state[1], message=text)
 
     def _set_auto_compile_enabled(self, enabled: bool, *, persist: bool = True) -> None:
         self.auto_compile_controller.set_enabled(enabled)
@@ -2675,7 +2968,9 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             return
         self.runtime.reset_environment()
         self.refresh_workspace_view()
-        self.append_output(f">> {self._script_banner_name(doc)}")
+        script_name = self._script_banner_name(doc)
+        self._set_runtime_status("Running", tone="info", message=f"Running {script_name}...")
+        self.append_output(f">> {script_name}")
         aborted = False
         try:
             for statement in statements:
@@ -2688,6 +2983,10 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         finally:
             self._append_prompt()
             self.refresh_workspace_view()
+            if aborted:
+                self._set_runtime_status("Error", tone="error", message=f"{script_name} stopped due to an error.")
+            else:
+                self._set_runtime_status("Done", tone="success", message=f"{script_name} finished.")
 
     def run_selection(self) -> None:
         doc = self._current_script_doc()
@@ -2706,8 +3005,10 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         if not statements:
             self.append_output("The selection is empty.")
             return
+        script_name = self._script_banner_name(doc)
+        self._set_runtime_status("Running", tone="info", message=f"Running selection from {script_name}...")
         self.append_output("[Running selection]")
-        self.append_output(f">> {self._script_banner_name(doc)}")
+        self.append_output(f">> {script_name}")
         aborted = False
         try:
             for statement in statements:
@@ -2722,6 +3023,10 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         finally:
             self._append_prompt()
             self.refresh_workspace_view()
+            if aborted:
+                self._set_runtime_status("Error", tone="error", message=f"Selection from {script_name} stopped due to an error.")
+            else:
+                self._set_runtime_status("Done", tone="success", message=f"Selection from {script_name} finished.")
 
     # ----- Plot listener --------------------------------------------------
     def _register_plot_listener(self) -> None:
@@ -2761,7 +3066,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         scroll.setWidgetResizable(True)
         container = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(container)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         label = QtWidgets.QLabel()
         label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -2769,7 +3074,19 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         layout.addWidget(label)
 
         scroll.setWidget(container)
-        window.setCentralWidget(scroll)
+        plot_root = QtWidgets.QWidget()
+        plot_root.setObjectName("mathLabPlotRoot")
+        plot_layout = QtWidgets.QVBoxLayout(plot_root)
+        plot_layout.setContentsMargins(10, 10, 10, 10)
+        plot_layout.setSpacing(0)
+        plot_layout.addWidget(
+            self._create_mathlab_panel(
+                "Plots",
+                "Generated figures from the current session",
+                scroll,
+            )
+        )
+        window.setCentralWidget(plot_root)
         window.show()
         window.raise_()
         window.activateWindow()
