@@ -11,24 +11,30 @@ CONSOLE_ERROR = "#ff8f8f"
 CONSOLE_WARNING = "#ffd27a"
 CONSOLE_PROMPT = "#9cdcfe"
 CONSOLE_STATUS = "#a9b3bd"
+CONSOLE_INPUT_BG = "#181b1f"
+CONSOLE_BUTTON_BG = "#262b31"
+CONSOLE_BUTTON_BORDER = "#3a424c"
+CONSOLE_BUTTON_HOVER = "#2d333a"
 
 
 class ConsoleInput(QtWidgets.QLineEdit):  # type: ignore[misc]
     def __init__(self, engine: ConsoleEngine, parent=None) -> None:
         super().__init__(parent)
         self.engine = engine
-        self.setClearButtonEnabled(True)
-        self.setPlaceholderText("Enter a MathLab command")
+        self.setClearButtonEnabled(False)
+        self.setPlaceholderText("")
+        self.setFrame(False)
+        self.setToolTip("Press Enter to run the current command. Use Up/Down for history.")
         self.setStyleSheet(
             f"""
             QLineEdit {{
-                background: {CONSOLE_OUTPUT_BG};
+                background: transparent;
                 color: {CONSOLE_PANEL_TEXT};
                 font-family: Consolas;
                 font-size: 11pt;
-                border: 1px solid {CONSOLE_BORDER};
-                border-radius: 4px;
-                padding: 6px 8px;
+                border: none;
+                padding: 6px 0;
+                selection-background-color: #264f78;
             }}
         """
         )
@@ -61,61 +67,113 @@ class ConsoleWidget(QtWidgets.QWidget):  # type: ignore[misc]
     ) -> None:
         super().__init__(parent)
         self.engine = engine
-        self._welcome_text = welcome_text or "Welcome to MathTeX Studio\nType commands below or build a script in MathLab."
+        self._welcome_text = welcome_text or (
+            "Welcome to MathTeX Studio\n"
+            "MathLab interactive terminal ready.\n"
+            "Enter runs the current command. Use Up/Down for history and Ctrl+L to clear."
+        )
 
-        self.output = QtWidgets.QPlainTextEdit(self)
-        self.output.setReadOnly(True)
-        self.output.setMinimumHeight(160)
-        self.output.setStyleSheet(
+        self.terminal_frame = QtWidgets.QFrame(self)
+        self.terminal_frame.setObjectName("mathLabConsoleRoot")
+        self.terminal_frame.setStyleSheet(
             f"""
-            QPlainTextEdit {{
+            QFrame#mathLabConsoleRoot {{
                 background: {CONSOLE_OUTPUT_BG};
-                color: {CONSOLE_PANEL_TEXT};
+                border: 1px solid {CONSOLE_BORDER};
+                border-radius: 8px;
+            }}
+            QFrame#mathLabConsoleInputRow {{
+                background: {CONSOLE_INPUT_BG};
+                border-top: 1px solid {CONSOLE_BORDER};
+                border-bottom-left-radius: 8px;
+                border-bottom-right-radius: 8px;
+            }}
+            QLabel#mathLabConsolePromptLabel {{
+                color: {CONSOLE_PROMPT};
                 font-family: Consolas;
                 font-size: 11pt;
-                border: 1px solid {CONSOLE_BORDER};
-                border-radius: 4px;
-                padding: 6px;
+                font-weight: 600;
+                background: transparent;
+            }}
+            QToolButton#mathLabConsoleUtilityButton {{
+                background: {CONSOLE_BUTTON_BG};
+                border: 1px solid {CONSOLE_BUTTON_BORDER};
+                border-radius: 6px;
+                color: {CONSOLE_PANEL_TEXT};
+                padding: 4px 10px;
+            }}
+            QToolButton#mathLabConsoleUtilityButton:hover {{
+                background: {CONSOLE_BUTTON_HOVER};
+                border-color: #4b5561;
             }}
         """
         )
 
-        self.input = ConsoleInput(engine, self)
-        self.send_btn = QtWidgets.QPushButton("Send", self)
-        self.clear_btn = QtWidgets.QPushButton("Clear", self)
-        self.send_btn.setObjectName("mathLabConsoleButton")
-        self.clear_btn.setObjectName("mathLabConsoleButton")
+        self.output = QtWidgets.QPlainTextEdit(self.terminal_frame)
+        self.output.setReadOnly(True)
+        self.output.setMinimumHeight(160)
+        self.output.setFrameStyle(QtWidgets.QFrame.Shape.NoFrame)
+        self.output.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
+        self.output.setStyleSheet(
+            f"""
+            QPlainTextEdit {{
+                background: transparent;
+                color: {CONSOLE_PANEL_TEXT};
+                font-family: Consolas;
+                font-size: 11pt;
+                border: none;
+                padding: 8px 10px 6px 10px;
+            }}
+        """
+        )
+
+        self.input_row = QtWidgets.QFrame(self.terminal_frame)
+        self.input_row.setObjectName("mathLabConsoleInputRow")
+        self.prompt_label = QtWidgets.QLabel(self.engine.prompt.rstrip(), self.input_row)
+        self.prompt_label.setObjectName("mathLabConsolePromptLabel")
+        self.input = ConsoleInput(engine, self.input_row)
+        self.clear_btn = QtWidgets.QToolButton(self.input_row)
+        self.clear_btn.setObjectName("mathLabConsoleUtilityButton")
+        self.clear_btn.setText("Clear")
+        self.clear_btn.setToolTip("Clear the console transcript (Ctrl+L).")
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-        layout.addWidget(self.output, 1)
-        layout.addWidget(self.input)
+        layout.setSpacing(0)
 
-        buttons = QtWidgets.QHBoxLayout()
-        buttons.addStretch()
-        buttons.addWidget(self.send_btn)
-        buttons.addWidget(self.clear_btn)
-        layout.addLayout(buttons)
+        terminal_layout = QtWidgets.QVBoxLayout(self.terminal_frame)
+        terminal_layout.setContentsMargins(0, 0, 0, 0)
+        terminal_layout.setSpacing(0)
+        terminal_layout.addWidget(self.output, 1)
+
+        input_layout = QtWidgets.QHBoxLayout(self.input_row)
+        input_layout.setContentsMargins(10, 6, 10, 6)
+        input_layout.setSpacing(8)
+        input_layout.addWidget(self.prompt_label)
+        input_layout.addWidget(self.input, 1)
+        input_layout.addWidget(self.clear_btn)
+        terminal_layout.addWidget(self.input_row)
+        layout.addWidget(self.terminal_frame, 1)
 
         self.input.returnPressed.connect(self._submit)
-        self.send_btn.clicked.connect(self._submit)
         self.clear_btn.clicked.connect(self.clear)
+        self.clear_shortcut = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+L"), self)
+        self.clear_shortcut.activated.connect(self.clear)
+        self.setFocusProxy(self.input)
 
         self.clear()
 
     def clear(self) -> None:
         self.output.setPlainText("")
+        self.input.clear()
         if self._welcome_text:
             self._append_raw(self._welcome_text, ensure_newline=True, kind="status")
-        self._ensure_prompt()
+        self.input.setFocus()
 
     def append_output(self, text: str, ensure_newline: bool = True, *, kind: str = "stdout") -> None:
         if not text:
             return
-        self._remove_trailing_prompt()
         self._append_raw(text, ensure_newline=ensure_newline, kind=kind)
-        self._ensure_prompt()
 
     def render_events(self, events: list[ConsoleEvent]) -> None:
         for event in events:
@@ -129,7 +187,6 @@ class ConsoleWidget(QtWidgets.QWidget):  # type: ignore[misc]
                 self.append_output(f"[Warning] {event.text}", kind="warning")
                 continue
             self.append_output(event.text, kind=event.kind)
-        self._ensure_prompt()
 
     def submit_current_input(self) -> None:
         self._submit()
@@ -150,28 +207,7 @@ class ConsoleWidget(QtWidgets.QWidget):  # type: ignore[misc]
         self.input.setFocus()
 
     def _append_prompt_line(self, line: str) -> None:
-        self._remove_trailing_prompt()
         self._append_raw(f"{self.engine.prompt}{line}", ensure_newline=True, kind="prompt")
-
-    def _ensure_prompt(self) -> None:
-        if self.output.toPlainText().endswith(self.engine.prompt):
-            return
-        self._remove_trailing_prompt()
-        self._append_raw(self.engine.prompt, ensure_newline=False, kind="prompt")
-
-    def _remove_trailing_prompt(self) -> None:
-        text = self.output.toPlainText()
-        if not text.endswith(self.engine.prompt):
-            return
-        cursor = self.output.textCursor()
-        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
-        cursor.movePosition(
-            QtGui.QTextCursor.MoveOperation.PreviousCharacter,
-            QtGui.QTextCursor.MoveMode.KeepAnchor,
-            len(self.engine.prompt),
-        )
-        cursor.removeSelectedText()
-        self.output.setTextCursor(cursor)
 
     def _append_raw(self, text: str, *, ensure_newline: bool, kind: str) -> None:
         cursor = self.output.textCursor()

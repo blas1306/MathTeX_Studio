@@ -1,0 +1,4 @@
+value = 7;
+function y = addOne(x)
+    y = x + 1;
+end

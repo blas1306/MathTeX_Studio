@@ -114,8 +114,10 @@ def test_console_uses_studio_branding_and_mathlab_prompt(
         assert window.console_widget is not None
         console_text = window.console_widget.output.toPlainText()
         assert "Welcome to MathTeX Studio" in console_text
-        assert "Type commands below or build a script in MathLab." in console_text
-        assert console_text.endswith("MathLab> ")
+        assert "MathLab interactive terminal ready." in console_text
+        assert "Use Up/Down for history and Ctrl+L to clear." in console_text
+        assert window.console_widget.prompt_label.text() == "MathLab>"
+        assert window.console_widget.input.placeholderText() == ""
     finally:
         window.close()
         qapp.processEvents()

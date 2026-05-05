@@ -1796,7 +1796,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         dock.setWidget(
             self._create_mathlab_panel(
                 "Console",
-                "MathLab command input and output",
+                "Interactive MathLab terminal session",
                 self.console_widget,
                 variant="muted",
             )
