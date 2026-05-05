@@ -4,6 +4,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+from notebook_file import new_notebook_document, save_notebook_file
+from notebook_view import NotebookView
 from project_system import PROJECT_METADATA_FILENAME, ProjectInfo, ProjectManager
 
 from PySide6 import QtCore, QtGui, QtWidgets  # type: ignore
@@ -189,6 +191,7 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
         self._workspace_splitter: QtWidgets.QSplitter | None = None
         self._splitter_defaults_applied = False
         self._sync_actions: list[QtGui.QAction] = []
+        self._syncing_notebook_source = False
         self.setStyleSheet(self._workspace_stylesheet())
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -309,13 +312,23 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
         if isinstance(self.editor_widget, QtWidgets.QPlainTextEdit):
             self.editor_widget.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.WidgetWidth)
             self.editor_widget.setObjectName("workspaceMtexEditor")
+        self.notebook_view = NotebookView(parent=self)
+        self.notebook_view.set_source_provider(
+            lambda: self.editor_widget.toPlainText() if isinstance(self.editor_widget, QtWidgets.QPlainTextEdit) else "",
+            self._current_file_path,
+        )
+        self.content_tabs = QtWidgets.QTabWidget()
+        self.content_tabs.setObjectName("workspaceContentTabs")
+        self.content_tabs.addTab(self.editor_widget, "Source")
+        self.content_tabs.addTab(self.notebook_view, "Notebook")
+        self.content_tabs.currentChanged.connect(self._handle_content_tab_changed)
         editor_panel, editor_layout, _editor_header = self._create_panel_frame(
             "MathTeX Content (.mtex)",
             "Compose and edit the active document",
             variant="primary",
         )
         editor_panel.setMinimumWidth(WORKSPACE_EDITOR_MIN_WIDTH)
-        editor_layout.addWidget(self.editor_widget, 1)
+        editor_layout.addWidget(self.content_tabs, 1)
         splitter.addWidget(editor_panel)
 
         self.preview_widget = preview_factory()
@@ -369,6 +382,7 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
         if isinstance(self.editor_widget, QtWidgets.QPlainTextEdit):
             self.editor_widget.setPlainText("")
             self.editor_widget.document().setModified(False)
+        self.set_notebook_source("")
         preview = getattr(self.preview_widget, "set_message", None)
         if callable(preview):
             preview(self._preview_message)
@@ -420,6 +434,42 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
 
     def set_current_file_label(self, filename: str) -> None:
         self.file_label.setText(filename)
+
+    def set_notebook_source(self, source: str, path: Path | None = None) -> None:
+        self._syncing_notebook_source = True
+        try:
+            self.notebook_view.set_source(source, path=path)
+        finally:
+            self._syncing_notebook_source = False
+
+    def sync_notebook_to_editor_if_active(self) -> None:
+        if self.content_tabs.currentWidget() is not self.notebook_view:
+            return
+        self._sync_notebook_to_editor()
+
+    def _handle_content_tab_changed(self, index: int) -> None:
+        if self._syncing_notebook_source:
+            return
+        current_widget = self.content_tabs.widget(index)
+        if current_widget is self.notebook_view:
+            source = self.editor_widget.toPlainText() if isinstance(self.editor_widget, QtWidgets.QPlainTextEdit) else ""
+            self.notebook_view.set_source(source, path=self._current_file_path())
+            return
+        self._sync_notebook_to_editor()
+
+    def _sync_notebook_to_editor(self) -> None:
+        if not isinstance(self.editor_widget, QtWidgets.QPlainTextEdit):
+            return
+        source = self.notebook_view.to_source()
+        if source == self.editor_widget.toPlainText():
+            return
+        self.editor_widget.setPlainText(source)
+
+    def _current_file_path(self) -> Path | None:
+        text = self.file_label.text().strip()
+        if not text or text == "No file open" or self._project is None:
+            return None
+        return self._project.path / text.lstrip("*")
 
     def set_build_status(self, text: str, tone: str = "neutral") -> None:
         palette = {
@@ -694,7 +744,7 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
             if item.isExpanded():
                 self._populate_children(item, path)
             return
-        if path.suffix.lower() in {".mtex", ".mtx"}:
+        if path.suffix.lower() in {".mtex", ".mtx", ".mtn"}:
             self.file_open_requested.emit(str(path))
 
     def _make_tree_action_button(self, text: str, tooltip: str) -> QtWidgets.QToolButton:
@@ -807,11 +857,13 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
                 self._selected_project_entry(),
                 name,
             )
+            if created_path.suffix.lower() == ".mtn":
+                save_notebook_file(new_notebook_document(), created_path)
         except (FileExistsError, FileNotFoundError, OSError, ValueError) as exc:
             QtWidgets.QMessageBox.warning(self, "New File", str(exc))
             return
         self.refresh_file_tree(selected_path=created_path)
-        if created_path.suffix.lower() in {".mtex", ".mtx"}:
+        if created_path.suffix.lower() in {".mtex", ".mtx", ".mtn"}:
             self.file_open_requested.emit(str(created_path))
 
     def _create_new_folder(self) -> None:

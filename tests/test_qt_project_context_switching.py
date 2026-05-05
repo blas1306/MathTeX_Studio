@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from qt_app import MathTeXQtWindow
+from notebook_file import new_notebook_document, save_notebook_file
 from project_system import ProjectManager
 
 
@@ -54,6 +55,22 @@ def test_opening_project_mtx_file_switches_to_interactive_tab(studio_window, qap
     assert window._current_menu_context() == "interactive"
     assert len(window.script_docs) == 1
     assert window.script_docs[0]["path"] == script_path
+
+
+def test_opening_project_mtn_file_switches_to_notebook_tab(studio_window, qapp) -> None:
+    window, project = studio_window
+    notebook_path = project.path / "analysis.mtn"
+    save_notebook_file(new_notebook_document(), notebook_path)
+
+    window._open_project(project)
+    qapp.processEvents()
+    assert window.central_tabs is not None
+
+    window._handle_project_file_activation(str(notebook_path))
+    qapp.processEvents()
+
+    assert window.central_tabs.currentIndex() == 2
+    assert window.notebook_editor_view.document.path == notebook_path
 
 
 def test_compile_guides_user_when_active_project_file_is_mtx(

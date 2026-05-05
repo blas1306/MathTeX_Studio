@@ -35,9 +35,11 @@ from mtex_executor import (
 )
 from execution_results import StructuredLogCollector, variable_summaries_from_snapshot, ExecutionResult
 from logs_output_widget import LogsOutputWidget
+from notebook_file import new_notebook_document, save_notebook_file
 from pdf_preview import PdfPreviewWidget
 from project_outputs import ProjectOutputManager
 from project_system import ProjectInfo, ProjectManager, ProjectRegistry, default_projects_root
+from notebook_editor_view import NotebookEditorView
 from project_widgets import ProjectCreationDialog, ProjectHomeWidget, ProjectWorkspaceWidget
 from ui.console_widget import ConsoleWidget as DockConsoleWidget
 
@@ -895,6 +897,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         central_tabs = QtWidgets.QTabWidget()
         central_tabs.addTab(self._build_script_tab(), "MathLab")
         central_tabs.addTab(self._build_mtex_tab(), "MTeX Studio")
+        central_tabs.addTab(self._build_notebook_tab(), "Notebook")
         central_tabs.currentChanged.connect(lambda _idx: self._handle_active_context_changed())
         self.central_tabs = central_tabs
         self.setCentralWidget(central_tabs)
@@ -1771,6 +1774,10 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self._show_project_home()
         return root
 
+    def _build_notebook_tab(self) -> QtWidgets.QWidget:
+        self.notebook_editor_view = NotebookEditorView(parent=self)
+        return self.notebook_editor_view
+
     # ----- Consola --------------------------------------------------------
     def append_output(self, text: str, ensure_newline: bool = True) -> None:
         self.console_widget.append_output(text, ensure_newline=ensure_newline)
@@ -2605,7 +2612,23 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         if file_path.suffix.lower() == ".mtx":
             self._open_mtex_in_script(file_path)
             return
+        if file_path.suffix.lower() == ".mtn":
+            self._open_notebook_file(file_path)
+            return
         self._open_mtex_file(file_path)
+
+    def _open_notebook_file(self, path: Path) -> None:
+        if self.notebook_editor_view is None:
+            return
+        try:
+            if path.exists() and path.stat().st_size == 0:
+                save_notebook_file(new_notebook_document(), path)
+            self.notebook_editor_view.load_path(path)
+        except (OSError, ValueError) as exc:
+            QtWidgets.QMessageBox.critical(self, "Notebook", f"Could not open the notebook.\n{exc}")
+            return
+        self._set_active_main_tab(2)
+        self._refresh_menu_bar_for_active_context()
 
     def _update_mtex_dirty(self, changed: bool) -> None:
         if self.mtex_file_label is None:
@@ -2638,6 +2661,8 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
     def _write_mtex_to_path(self, path: Path) -> None:
         if self.mtex_editor is None:
             raise RuntimeError("MTeX editor is not available.")
+        if self.project_workspace_widget is not None:
+            self.project_workspace_widget.sync_notebook_to_editor_if_active()
         content = self.mtex_editor.toPlainText()
         path.write_text(content, encoding="utf-8")
 
@@ -2698,6 +2723,8 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             self.mtex_editor.setPlainText(content)
             self.mtex_editor.document().setModified(False)
             self.current_mtex_path = path
+            if self.project_workspace_widget is not None:
+                self.project_workspace_widget.set_notebook_source(content, path=path)
             if self.mtex_file_label is not None:
                 self.mtex_file_label.setText(path.name)
             self._refresh_editor_pdf_sync_source()

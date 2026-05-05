@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PySide6 import QtWidgets  # type: ignore
 
+from notebook_file import load_notebook_file
 from project_system import ProjectManager
 from project_widgets import ProjectWorkspaceWidget
 
@@ -70,6 +71,33 @@ def test_new_file_in_root_emits_open_for_mtx(tmp_path: Path, monkeypatch, qapp) 
 
         created_path = project.path / "solver.mtx"
         assert created_path.exists()
+        assert opened_paths == [str(created_path)]
+    finally:
+        widget.close()
+        qapp.processEvents()
+
+
+def test_new_notebook_file_initializes_mtn_and_emits_open(tmp_path: Path, monkeypatch, qapp) -> None:
+    manager = ProjectManager()
+    project = manager.create_project("NotebookFileProject", tmp_path)
+    widget = _build_workspace_widget(manager)
+    opened_paths: list[str] = []
+    widget.file_open_requested.connect(opened_paths.append)
+
+    monkeypatch.setattr(
+        QtWidgets.QInputDialog,
+        "getText",
+        staticmethod(lambda *args, **kwargs: ("analysis.mtn", True)),
+    )
+
+    try:
+        widget.set_project(project)
+
+        widget.new_file_btn.click()
+        qapp.processEvents()
+
+        created_path = project.path / "analysis.mtn"
+        assert load_notebook_file(created_path).path == created_path
         assert opened_paths == [str(created_path)]
     finally:
         widget.close()
