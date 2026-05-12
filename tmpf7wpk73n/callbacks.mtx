@@ -1,4 +1,0 @@
-a = 100;
-function y = applyTwice(f, x)
-    y = f(x) + f(x);
-end

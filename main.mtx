@@ -1,4 +1,0 @@
-from privado import _y
-from privado import _g
-privado._y
-privado._g(2)

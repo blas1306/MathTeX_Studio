@@ -1,8 +1,0 @@
-_x = 1;
-visible = 2;
-function y = _hidden(x)
-    y = x + _x;
-end
-function y = publicFn(x)
-    y = x + visible;
-end
