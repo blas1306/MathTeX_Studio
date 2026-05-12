@@ -114,6 +114,238 @@ INTERACTIVE_MENU_CONTEXT = "interactive"
 STUDIO_MENU_CONTEXT = "studio"
 SNIPPET_CURSOR_MARKER = "<|cursor|>"
 
+DARK_APP_STYLESHEET = f"""
+QWidget {{
+    background: #181b1f;
+    color: {MATHLAB_TEXT};
+    selection-background-color: #315f8f;
+    selection-color: #ffffff;
+}}
+QMainWindow,
+QDialog,
+QMessageBox,
+QFileDialog {{
+    background: #181b1f;
+    color: {MATHLAB_TEXT};
+}}
+QMenuBar {{
+    background: #20242a;
+    color: {MATHLAB_TEXT};
+    border-bottom: 1px solid #333942;
+}}
+QMenuBar::item {{
+    background: transparent;
+    padding: 5px 10px;
+}}
+QMenuBar::item:selected,
+QMenuBar::item:pressed {{
+    background: #2d333a;
+}}
+QMenu {{
+    background: #20242a;
+    color: {MATHLAB_TEXT};
+    border: 1px solid #3a424c;
+}}
+QMenu::item {{
+    padding: 5px 26px 5px 24px;
+}}
+QMenu::item:selected {{
+    background: #315f8f;
+    color: #ffffff;
+}}
+QMenu::separator {{
+    height: 1px;
+    background: #3a424c;
+    margin: 5px 8px;
+}}
+QTabWidget::pane {{
+    background: #181b1f;
+    border: 1px solid #333942;
+}}
+QTabBar::tab {{
+    background: #20242a;
+    color: {MATHLAB_MUTED_TEXT};
+    border: 1px solid #333942;
+    padding: 7px 12px;
+}}
+QTabBar::tab:selected {{
+    background: #262b31;
+    color: {MATHLAB_TEXT};
+}}
+QTabBar::tab:hover {{
+    background: #2d333a;
+}}
+QPushButton,
+QToolButton {{
+    background: #262b31;
+    border: 1px solid #3a424c;
+    border-radius: 6px;
+    color: #d7dce1;
+    padding: 4px 10px;
+}}
+QPushButton:hover,
+QToolButton:hover {{
+    background: #2d333a;
+    border-color: #4b5561;
+}}
+QPushButton:pressed,
+QToolButton:pressed {{
+    background: #1f2328;
+}}
+QPushButton:disabled,
+QToolButton:disabled {{
+    color: #7c858e;
+    border-color: #343a42;
+    background: #20242a;
+}}
+QLineEdit,
+QPlainTextEdit,
+QTextEdit,
+QComboBox,
+QSpinBox,
+QDoubleSpinBox {{
+    background: #15181d;
+    color: {MATHLAB_TEXT};
+    border: 1px solid #3a424c;
+    border-radius: 5px;
+    padding: 3px 6px;
+}}
+QLineEdit:focus,
+QPlainTextEdit:focus,
+QTextEdit:focus,
+QComboBox:focus,
+QSpinBox:focus,
+QDoubleSpinBox:focus {{
+    border-color: #4f8cc9;
+}}
+QComboBox QAbstractItemView,
+QListView,
+QListWidget,
+QTreeView,
+QTreeWidget,
+QTableView,
+QTableWidget {{
+    background: #1b1f24;
+    alternate-background-color: #20252b;
+    color: {MATHLAB_TEXT};
+    border: 1px solid #313740;
+    selection-background-color: #315f8f;
+    selection-color: #ffffff;
+}}
+QHeaderView::section {{
+    background: #262b31;
+    color: {MATHLAB_MUTED_TEXT};
+    border: 1px solid #3a424c;
+    padding: 4px 6px;
+}}
+QCheckBox,
+QRadioButton,
+QLabel {{
+    background: transparent;
+    color: {MATHLAB_TEXT};
+}}
+QCheckBox::indicator,
+QRadioButton::indicator {{
+    width: 14px;
+    height: 14px;
+}}
+QCheckBox::indicator:unchecked,
+QRadioButton::indicator:unchecked {{
+    background: #15181d;
+    border: 1px solid #4a5360;
+}}
+QCheckBox::indicator:checked,
+QRadioButton::indicator:checked {{
+    background: #315f8f;
+    border: 1px solid #5a93c7;
+}}
+QStatusBar {{
+    background: #20242a;
+    color: {MATHLAB_TEXT};
+    border-top: 1px solid #333942;
+}}
+QToolTip {{
+    background: #20242a;
+    color: {MATHLAB_TEXT};
+    border: 1px solid #4a5360;
+    padding: 4px;
+}}
+QScrollArea,
+QScrollArea > QWidget > QWidget {{
+    background: #181b1f;
+}}
+QScrollBar:vertical,
+QScrollBar:horizontal {{
+    background: #181b1f;
+    border: none;
+    margin: 0;
+}}
+QScrollBar::handle:vertical,
+QScrollBar::handle:horizontal {{
+    background: #3a424c;
+    border-radius: 4px;
+    min-height: 24px;
+    min-width: 24px;
+}}
+QScrollBar::handle:vertical:hover,
+QScrollBar::handle:horizontal:hover {{
+    background: #4b5561;
+}}
+QScrollBar::add-line,
+QScrollBar::sub-line,
+QScrollBar::add-page,
+QScrollBar::sub-page {{
+    background: transparent;
+    border: none;
+    width: 0;
+    height: 0;
+}}
+QSplitter::handle {{
+    background: #20242a;
+}}
+"""
+
+
+def apply_dark_qt_theme(app: QtWidgets.QApplication | None = None) -> None:
+    """Force MathTeX to use a dark Qt theme regardless of the OS theme."""
+    app = app or QtWidgets.QApplication.instance()
+    if app is None:
+        return
+
+    if "Fusion" in QtWidgets.QStyleFactory.keys():
+        app.setStyle("Fusion")
+
+    palette = QtGui.QPalette()
+    palette.setColor(QtGui.QPalette.ColorRole.Window, QtGui.QColor("#181b1f"))
+    palette.setColor(QtGui.QPalette.ColorRole.WindowText, QtGui.QColor(MATHLAB_TEXT))
+    palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor("#15181d"))
+    palette.setColor(QtGui.QPalette.ColorRole.AlternateBase, QtGui.QColor("#20252b"))
+    palette.setColor(QtGui.QPalette.ColorRole.ToolTipBase, QtGui.QColor("#20242a"))
+    palette.setColor(QtGui.QPalette.ColorRole.ToolTipText, QtGui.QColor(MATHLAB_TEXT))
+    palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(MATHLAB_TEXT))
+    palette.setColor(QtGui.QPalette.ColorRole.Button, QtGui.QColor("#262b31"))
+    palette.setColor(QtGui.QPalette.ColorRole.ButtonText, QtGui.QColor("#d7dce1"))
+    palette.setColor(QtGui.QPalette.ColorRole.BrightText, QtGui.QColor("#ffffff"))
+    palette.setColor(QtGui.QPalette.ColorRole.Highlight, QtGui.QColor("#315f8f"))
+    palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor("#ffffff"))
+    palette.setColor(
+        QtGui.QPalette.ColorGroup.Disabled,
+        QtGui.QPalette.ColorRole.WindowText,
+        QtGui.QColor("#7c858e"),
+    )
+    palette.setColor(
+        QtGui.QPalette.ColorGroup.Disabled,
+        QtGui.QPalette.ColorRole.Text,
+        QtGui.QColor("#7c858e"),
+    )
+    palette.setColor(
+        QtGui.QPalette.ColorGroup.Disabled,
+        QtGui.QPalette.ColorRole.ButtonText,
+        QtGui.QColor("#7c858e"),
+    )
+    app.setPalette(palette)
+    app.setStyleSheet(DARK_APP_STYLESHEET)
+
 
 class MathSyntaxHighlighter(QtGui.QSyntaxHighlighter):  # type: ignore[misc]
     _STATE_TEXT = 0
@@ -833,6 +1065,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
 class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
     def __init__(self) -> None:
         super().__init__()
+        apply_dark_qt_theme()
         set_plot_mode("interactive")
         self.setWindowTitle("MathTeX Studio")
         self.resize(1200, 720)
@@ -3211,7 +3444,9 @@ def launch_qt_gui() -> bool:
     """Try to open the Qt interface. Return False if it is not possible."""
     if not QT_AVAILABLE:
         return False
+    QtCore.QCoreApplication.setAttribute(QtCore.Qt.ApplicationAttribute.AA_DontUseNativeDialogs, True)
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
+    apply_dark_qt_theme(app)
     window = MathTeXQtWindow()
     window.show()
     try:
