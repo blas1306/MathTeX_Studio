@@ -1,65 +1,118 @@
-# MathTeX
+# MathTeX Studio
 
-MathTeX is a computational environment for writing technical documents with executable math.
+> A math-first computational environment for technical writing, numerical computation, and executable scientific documents.
 
-It combines numerical and symbolic computation with LaTeX so you can calculate values, generate plots and tables, and inject the results directly into the final PDF.
+MathTeX Studio combines the workflow of LaTeX, MATLAB/Octave, Jupyter, and scientific computing tools into a single environment focused on mathematical and technical work.
 
-In short:
+Instead of separating:
 
-> LaTeX + computation that updates itself
+- computation
+- plotting
+- symbolic manipulation
+- report writing
+- PDF generation
 
-## Overview
+into multiple disconnected applications, MathTeX Studio allows everything to happen inside one integrated workflow.
 
-In a traditional workflow, computations, plots, tables, and writing often live in separate tools. MathTeX brings those steps together in one place.
+---
 
-With MathTeX, you can:
+# Why MathTeX Studio?
 
-- write calculation scripts in `.mtx` files
-- create executable LaTeX documents in `.mtex`
-- insert computed values with `\var{...}`
-- insert computed expressions with `\expr{...}`
-- insert generated plots with `\plot{...}`
-- insert generated tables with `\table{...}`
-- compile the final document to PDF
+In a traditional workflow, a student or researcher often needs to:
 
-## Core Concepts
+1. Compute results in MATLAB, Octave, Python, or Julia
+2. Generate plots separately
+3. Export tables manually
+4. Copy results into LaTeX
+5. Recompile the document every time something changes
 
-### `.mtx` scripts
+MathTeX Studio was created to remove that friction.
 
-Use `.mtx` files for calculation, experimentation, reusable functions, and plotting.
+The idea is simple:
+
+> write the computation and the document together
+
+When values, equations, tables, or plots change, the final PDF updates automatically.
+
+---
+
+# Main Concepts
+
+MathTeX Studio currently revolves around two complementary formats:
+
+| Format | Purpose |
+|---|---|
+| `.mtx` | Interactive mathematical scripting |
+| `.mtex` | Executable LaTeX documents |
+
+---
+
+# `.mtx` — Mathematical Scripts
+
+`.mtx` files are designed for:
+
+- numerical experimentation
+- reusable functions
+- symbolic computation
+- plotting
+- linear algebra
+- numerical methods
+- quick calculations
+
+The syntax is heavily inspired by MATLAB and Octave while remaining integrated with the MathTeX runtime.
+
+Example:
+
+```text
+A = [1, 2; 3, 4];
+b = [5; 6];
+
+x = A | b;
+
+print(x)
+```
+
+---
+
+# `.mtex` — Executable Technical Documents
+
+`.mtex` files combine LaTeX with executable code blocks.
+
+This allows documents to:
+
+- execute calculations during compilation
+- inject computed values directly into the PDF
+- generate plots automatically
+- generate tables automatically
+- keep documents synchronized with the underlying computation
 
 Typical use cases:
 
-- quick numeric experiments
-- function definitions
-- linear algebra
-- symbolic differentiation and solving
-- reusable helper scripts
+- physics lab reports
+- numerical methods assignments
+- linear algebra reports
+- scientific notes
+- engineering documentation
+- computational mathematics
 
-### `.mtex` documents
+---
 
-Use `.mtex` files when you want a LaTeX document that executes code blocks and embeds the results into the document output.
-
-This is the format intended for:
-
-- reports
-- assignments
-- technical notes
-- documents with computed values, plots, and tables
-
-## Example
+# Example
 
 ```latex
 \documentclass{article}
 \begin{document}
 
+\section{Linear System}
+
 \begin{code}
 A = [1, 2; 3, 4];
 b = [5; 6];
+
 x = A | b;
 \end{code}
 
-The solution is:
+The computed solution is:
 
 \[
 x = \var{x}
@@ -68,182 +121,449 @@ x = \var{x}
 \end{document}
 ```
 
-MathTeX will:
+Compilation pipeline:
 
-1. execute the code block
-2. replace `\var{x}` with the computed result
-3. generate an intermediate `.tex` file
-4. compile the final PDF
+```text
+.mtex → execution → .tex → pdflatex → PDF
+```
 
-## Plot Example
+During compilation, MathTeX Studio:
+
+1. executes the code blocks
+2. stores variables in the runtime workspace
+3. replaces placeholders such as `\var{x}`
+4. generates an intermediate `.tex` file
+5. compiles the final PDF automatically
+
+---
+
+# Variable and Expression Injection
+
+## Variable Injection
+
+```latex
+\var{x}
+```
+
+Injects the value of a computed variable.
+
+Supports indexing:
+
+```latex
+\var{A(2,1)}
+```
+
+---
+
+## Expression Injection
+
+```latex
+\expr{\det(A)}
+```
+
+Evaluates and injects a computed expression.
+
+Useful for:
+
+- determinants
+- norms
+- traces
+- symbolic expressions
+- computed formulas
+
+---
+
+# Plot Generation
+
+Plots can be generated programmatically and inserted directly into the document.
+
+## Script
 
 ```text
 f(x) = x.^2 - 2;
-\plot(f, -1, 3, name = "graph");
+
+\plot(f, -1, 3, name = "graph")
 ```
+
+## Document
 
 ```latex
 \plot{graph}
 ```
 
-## Features
+---
 
-- interactive scripting with `.mtx` files
-- executable LaTeX documents with `.mtex`
-- automatic PDF generation through `pdflatex`
-- inline value injection with `\var{...}`
-- insert computed expressions with `\expr{...}`
-- named plot generation and insertion with `\plot{...}`
-- named table generation and insertion with `\table{...}`
-- matrix and element-wise operations
-- linear algebra tools such as LU, SVD, and linear system solving
-- calculus and symbolic utilities such as derivatives and solving
-- numerical methods including Newton-Raphson style workflows
-- PySide6 desktop interface with CLI fallback
+# Tables
+
+Generated tables can also be embedded automatically.
+
+```latex
+\table{results}
+```
+
+This is especially useful for:
+
+- experimental measurements
+- numerical iterations
+- regression outputs
+- matrix data
+
+---
+
+# Interactive Notebooks (`.mtn`)
+
+MathTeX Studio also includes an experimental notebook system.
+
+Notebook documents support:
+
+- executable code blocks
+- text blocks
+- persistent shared workspace
+- sequential execution
+- output visualization
+- export to `.mtex`
+
+The notebook workflow is designed to combine ideas from:
+
+- Jupyter
+- MATLAB Live Scripts
+- scientific computing notebooks
+
+while remaining deeply integrated with the MathTeX document pipeline.
+
+---
+
+# Features
+
+## Computation
+
+- numerical computation
+- symbolic computation
+- matrix operations
+- linear algebra
+- calculus utilities
+- equation solving
+- element-wise operations
+- numerical methods
+
+---
+
+## Document System
+
+- executable LaTeX documents
+- automatic PDF generation
+- inline variable injection
+- inline expression evaluation
+- automatic plot insertion
+- automatic table insertion
+- intermediate `.tex` generation
+
+---
+
+## Interface
+
+- PyQt6 desktop application
+- integrated editor
+- PDF preview
+- CLI fallback mode
+- autocomplete system
+- diagnostics and error reporting
+- project-based workflow
+
+---
+
+## Runtime and Language
+
+- custom parser
+- custom AST pipeline
+- MATLAB/Octave-inspired syntax
+- runtime workspace system
+- document execution engine
+- execution-aware placeholders
+
+---
+
+# Philosophy
+
+MathTeX Studio is not trying to replace:
+
+- MATLAB
+- Octave
+- Wolfram Mathematica
+- Jupyter
+- Overleaf
+- Python
+- Julia
+
+Instead, the goal is to combine parts of those workflows into a single environment focused on:
+
+> executable mathematical documents
+
+The project is especially oriented toward:
+
+- students
+- engineers
+- researchers
+- scientific computing workflows
+- technical education
+
+---
+
+# Screenshots
+
+> Screenshots and demos will be added here.
+
+Suggested future additions:
+
+- editor UI
+- notebook UI
+- PDF synchronization
+- plots
+- executable document examples
+
+---
+
+# Installation
 
 ## Requirements
 
-- Python 3
-- dependencies from `requirements.txt`
+- Python 3.11+
 - `pdflatex` available in `PATH`
-- PySide6 with QtPdf support for the GUI preview
+- dependencies from `requirements.txt`
+- PyQt6 with QtPdf support
 
-Recommended LaTeX distributions:
+Recommended TeX distributions:
 
-- Windows: MiKTeX
-- Linux/macOS: TeX Live
+| Platform | Distribution |
+|---|---|
+| Windows | MiKTeX |
+| Linux | TeX Live |
+| macOS | MacTeX |
 
-## Installation
+---
+
+## Clone the Repository
+
+```bash
+git clone https://github.com/blas1306/MathTeX_Studio.git
+cd MathTeX_Studio
+```
+
+---
+
+## Create a Virtual Environment
+
+### Linux / macOS
 
 ```bash
 python -m venv .venv
-
-# Linux/macOS
 source .venv/bin/activate
+```
 
-# Windows PowerShell
+### Windows PowerShell
+
+```powershell
+python -m venv .venv
 .venv\Scripts\Activate.ps1
+```
 
+---
+
+## Install Dependencies
+
+```bash
 python -m pip install -r requirements.txt
 ```
 
-## Running
+---
 
-Start the desktop application:
+# Running MathTeX Studio
+
+## GUI Mode
 
 ```bash
 python src/main.py
 ```
 
-Force CLI mode:
+---
+
+## CLI Mode
 
 ```bash
 python src/main.py --cli
 ```
 
-Current behavior:
+Behavior:
 
-- `python src/main.py` tries to launch the PySide6 GUI
-- if the GUI cannot start, MathTeX falls back to CLI mode
-- `python src/main.py --cli` always starts the text interface
+- the application attempts to launch the GUI first
+- if GUI initialization fails, MathTeX falls back to CLI mode
+- `--cli` forces text-only execution
 
-## Build Output
+---
 
-When compiling a `.mtex` document, MathTeX writes build artifacts to `build/`.
+# Build Artifacts
+
+When compiling a `.mtex` document, build outputs are generated automatically.
 
 Typical outputs:
 
-- `build/<name>.tex`
-- `build/<name>.pdf`
-- `build/compile.log`
-
-If compilation fails, `build/compile.log` is the first place to check.
-
-## Project Structure
-
 ```text
-src/        Core application code
-tests/      Automated tests
-docs/       User documentation
-ejemplos/   Example scripts and documents
+build/
+├── document.tex
+├── document.pdf
+├── compile.log
+└── document.mtextrace.json
 ```
 
-Notable files:
+The `.mtextrace.json` artifact is used for source mapping and synchronization between `.mtex` source lines and generated LaTeX.
 
-- `src/main.py`: application entry point
-- `src/latex_lang.py`: language runtime
-- `src/mtex_executor.py`: `.mtex` execution and build pipeline
-- `src/qt_app.py`: PySide6 GUI
+---
 
-## Documentation
+# Project Structure
 
-User documentation:
+```text
+src/        Core source code
+tests/      Automated tests
+docs/       Documentation
+ejemplos/   Example projects and demos
+```
 
-- `docs/guia_de_uso.md`
-- `docs/operadores_elemento_a_elemento.md`
+Important modules:
 
-## Example Demos
+| File | Purpose |
+|---|---|
+| `src/main.py` | Application entry point |
+| `src/mtex_executor.py` | `.mtex` execution pipeline |
+| `src/latex_lang.py` | Runtime and language integration |
+| `src/qt_app.py` | PyQt6 application |
+| `src/notebook_*` | Notebook system |
 
-MathTeX includes several example projects demonstrating different use cases:
+---
 
-### Physics Lab Report
-Experimental data, computed values, and automatically generated plots in a single document.
+# Testing
 
-- measurements → computation → plot → final PDF
-- shows a complete real-world workflow
+The project includes an extensive automated test suite.
 
-### Linear Algebra Report
-Solving a linear system and embedding results directly into a technical document.
+Run tests with:
 
-- matrix definitions
-- system solving \(Ax=b\)
+```bash
+pytest tests -q
+```
+
+The test suite covers:
+
+- parser behavior
+- runtime execution
+- diagnostics
+- notebook execution
+- Qt workflows
+- document compilation
+- AST transformations
+
+---
+
+# Example Projects
+
+## Physics Lab Report
+
+Demonstrates:
+
+- experimental measurements
+- automatic calculations
+- generated plots
+- integrated PDF workflow
+
+---
+
+## Linear Algebra Report
+
+Demonstrates:
+
+- matrix operations
 - LU factorization
+- solving linear systems
+- embedded computed results
 
-### Newton Method Demo
-Numerical root-finding using Newton-Raphson.
+---
 
-- function definition
-- root approximation
-- generated plot
+## Newton–Raphson Demo
 
-Each demo can be found in the `examples/` directory.
+Demonstrates:
 
-## Notes
+- numerical root finding
+- iterative methods
+- generated plots
+- executable mathematical reports
 
-- If PDF compilation fails, verify that `pdflatex` is installed and available in `PATH`.
-- If preview does not work, verify that PySide6 includes QtPdf support.
-- Placeholders such as `\var{A(2,1)}` use 1-based indexing.
+---
 
-## Philosophy
+# Current Status
 
-MathTeX is not trying to replace MATLAB, Wolfram, or Jupyter.
+MathTeX Studio is under active development.
 
-Its focus is narrower and more document-oriented:
+The core execution pipeline is already functional and usable, while many parts of the interface and user experience continue to evolve.
 
-> simplify the workflow of writing technical documents with embedded computation
+Current areas of development include:
 
-## Project Status
+- notebook system
+- editor UX/UI
+- PDF synchronization
+- diagnostics
+- runtime improvements
+- language features
+- project workflow
 
-MathTeX is under active development.
+---
 
-The `.mtex` document pipeline is already usable and continues to improve, while the application and user experience are still evolving.
+# Roadmap Ideas
 
-## AI Assistance Disclaimer
+Potential future directions:
+
+- real-time PDF synchronization
+- richer plotting system
+- Julia and Python execution blocks
+- improved notebook experience
+- package/module system
+- scientific publishing templates
+- interactive widgets
+- collaborative editing
+
+---
+
+# AI Assistance Disclaimer
 
 This project has been developed with significant assistance from AI tools.
 
-As the author, I do not yet have the full level of expertise required to build a system of this complexity entirely on my own. However, this project is also part of my learning process.
+MathTeX Studio is also part of a broader learning process involving:
 
-My goal is to progressively deepen my understanding of the underlying concepts and reduce reliance on AI over time, eventually being able to continue developing and maintaining MathTeX more independently.
+- language design
+- compiler construction
+- scientific computing
+- numerical methods
+- desktop application development
+- LaTeX tooling
+- UI/UX design
 
-## Contributing
+The long-term goal is to progressively deepen understanding of the system internals and continue evolving the project independently.
 
-Contributions are welcome. Contribution guidelines are not yet formalized.
+---
 
-## License
+# Contributing
+
+Contributions, ideas, issue reports, and feedback are welcome.
+
+Formal contribution guidelines are not yet finalized.
+
+---
+
+# License
 
 This project is licensed under the GNU General Public License v3.0 (GPL-3.0).
 
 This means:
-- You are free to use, modify, and distribute the software
-- Any distributed modifications must also be open source under the same license
+
+- you may use, modify, and distribute the software
+- derivative distributed works must also remain open source under GPLv3
+
+See the `LICENSE` file for details.
+
