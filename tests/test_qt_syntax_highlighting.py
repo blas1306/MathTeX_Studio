@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from qt_app import CodeEditor
+from qt_app import CodeEditor, PUNCT_COLOR, STRING_COLOR
 
 
 def _block_format_colors(editor: CodeEditor, block_number: int) -> list[tuple[int, int, str]]:
@@ -81,3 +81,26 @@ def test_from_import_statement_highlights_dotted_module_and_imported_names(qapp)
     assert _has_color_at(editor, 0, 33, 11, "#9cdcfe")
 
     editor.close()
+
+
+def test_punctuation_is_visible_in_script_and_mtex_code_blocks(qapp) -> None:
+    assert PUNCT_COLOR != STRING_COLOR
+
+    script_editor = CodeEditor()
+    script_editor.set_autocomplete_document_kind("script")
+    script_editor.setPlainText("A = [1, (2 + 3); {4, 5}]\n")
+
+    mtex_editor = CodeEditor()
+    mtex_editor.set_autocomplete_document_kind("mtex_document")
+    mtex_editor.setPlainText("\\section{A}\n\\begin{code}\nA = [1, (2 + 3); {4, 5}]\n\\end{code}\n")
+    qapp.processEvents()
+
+    punctuation_positions = (2, 4, 6, 8, 11, 14, 15, 17, 19, 22, 23)
+    assert _has_color_at(mtex_editor, 0, 8, 1, PUNCT_COLOR)
+    assert _has_color_at(mtex_editor, 0, 10, 1, PUNCT_COLOR)
+    for position in punctuation_positions:
+        assert _has_color_at(script_editor, 0, position, 1, PUNCT_COLOR)
+        assert _has_color_at(mtex_editor, 2, position, 1, PUNCT_COLOR)
+
+    script_editor.close()
+    mtex_editor.close()

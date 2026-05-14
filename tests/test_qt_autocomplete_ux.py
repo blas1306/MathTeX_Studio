@@ -98,6 +98,30 @@ def test_normal_writing_still_opens_popup_for_partial_tokens(editor: CodeEditor,
     assert current.name == r"\plot()"
 
 
+def test_popup_is_child_of_editor_viewport_and_opens_below_cursor(editor: CodeEditor, qapp) -> None:
+    editor.setPlainText(r"\pl")
+    qapp.processEvents()
+    editor._hide_autocomplete()
+
+    cursor = editor.textCursor()
+    cursor.setPosition(len(r"\pl"))
+    editor.setTextCursor(cursor)
+    qapp.processEvents()
+    editor._refresh_autocomplete(trigger="text")
+    qapp.processEvents()
+
+    popup = editor._autocomplete_popup
+    assert popup is not None
+    assert popup.is_visible() is True
+    assert popup.parentWidget() is editor.viewport()
+    assert popup.isWindow() is False
+
+    popup_rect = popup.geometry()
+    viewport_rect = editor.viewport().rect()
+    assert viewport_rect.contains(popup_rect)
+    assert popup_rect.top() >= editor.cursorRect().bottom()
+
+
 def test_editor_suggests_document_symbols_without_runtime_state(editor: CodeEditor, qapp) -> None:
     editor.setPlainText("A = [1,2;3,4]\nA")
     qapp.processEvents()

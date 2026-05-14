@@ -77,9 +77,9 @@ PUNCT_PATTERN = re.compile(r"[=+\-*/%^<>{}\[\](),.;:|]")
 INDENTATION = " " * 4
 EDITOR_BG = "#353535"
 TEXT_FG = "#ffffff"
-STRING_COLOR = "#f7dc6f"
+STRING_COLOR = "#c586c0"
 NUMBER_COLOR = "#45b39d"
-PUNCT_COLOR = "#000000"
+PUNCT_COLOR = "#f7dc6f"
 SELECT_BG = "rgba(255, 159, 59, 110)"  # tono calido con algo de transparencia
 MATHLAB_EDITOR_BG = "#1e1e1e"
 MATHLAB_PANEL_BG = "#252526"
@@ -495,10 +495,9 @@ class EditorAutocompleteContext:
 
 class QtAutocompletePopup(QtWidgets.QFrame):  # type: ignore[misc]
     def __init__(self, parent, *, on_accept) -> None:
-        super().__init__(parent, QtCore.Qt.WindowType.Tool | QtCore.Qt.WindowType.FramelessWindowHint)
+        super().__init__(parent)
         self._on_accept = on_accept
         self._suggestions: list[CommandSuggestion] = []
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
         self.setFrameShadow(QtWidgets.QFrame.Shadow.Plain)
@@ -602,37 +601,47 @@ class QtAutocompletePopup(QtWidgets.QFrame):  # type: ignore[misc]
             self._position_for_editor(editor)
 
     def _position_for_editor(self, editor: "CodeEditor") -> None:
+        viewport_rect = editor.viewport().rect()
         row_height = max(22, self._list.sizeHintForRow(0))
         visible_rows = min(max(1, self._list.count()), 8)
         frame = self.frameWidth() * 2
         scrollbar_width = self._list.verticalScrollBar().sizeHint().width()
-        width = min(560, max(280, int(editor.viewport().width() * 0.55)))
+        width = min(560, max(280, int(viewport_rect.width() * 0.55)))
+        width = min(width, max(1, viewport_rect.width()))
         needs_scroll = self._list.count() > visible_rows
         height = row_height * visible_rows + frame + 4
         if needs_scroll:
             width += scrollbar_width
+            width = min(width, max(1, viewport_rect.width()))
+
+        max_height = max(1, viewport_rect.height() - 8)
+        if height > max_height:
+            height = max_height
         self.resize(width, height)
 
         rect = editor.cursorRect()
-        global_pos = editor.viewport().mapToGlobal(rect.bottomLeft())
-        pos = QtCore.QPoint(global_pos.x(), global_pos.y() + 4)
+        below_y = rect.bottom() + 4
+        above_y = rect.top() - height - 4
+        space_below = viewport_rect.height() - below_y
+        space_above = rect.top() - 4
+        if height > space_below and space_above > space_below:
+            y = max(0, above_y)
+        else:
+            y = min(max(0, below_y), max(0, viewport_rect.height() - height))
 
-        screen = editor.windowHandle().screen() if editor.windowHandle() else QtGui.QGuiApplication.primaryScreen()
-        if screen is not None:
-            available = screen.availableGeometry()
-            if pos.x() + self.width() > available.right():
-                pos.setX(max(available.left(), available.right() - self.width()))
-            if pos.y() + self.height() > available.bottom():
-                pos.setY(max(available.top(), global_pos.y() - self.height() - rect.height()))
-
-        self.move(pos)
+        x = min(max(0, rect.left()), max(0, viewport_rect.width() - width))
+        self.move(QtCore.QPoint(x, y))
 
 
 class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
     def __init__(self, parent=None, *, enable_autocomplete: bool = False) -> None:
         super().__init__(parent)
         self._autocomplete_enabled = enable_autocomplete
-        self._autocomplete_popup = QtAutocompletePopup(self, on_accept=self._accept_autocomplete_suggestion) if enable_autocomplete else None
+        self._autocomplete_popup = (
+            QtAutocompletePopup(self.viewport(), on_accept=self._accept_autocomplete_suggestion)
+            if enable_autocomplete
+            else None
+        )
         self._autocomplete_suspended = False
         self._autocomplete_document_kind = "script"
         self._autocomplete_workspace_provider: Callable[[], list[dict[str, str]]] | None = None
