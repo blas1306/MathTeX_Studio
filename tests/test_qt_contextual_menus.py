@@ -101,7 +101,7 @@ def test_main_tab_uses_mathlab_name_and_editor_runs_show_script_banner(
         qapp.processEvents()
 
 
-def test_console_uses_studio_branding_and_mathlab_prompt(
+def test_console_uses_studio_branding_and_mathlab_legacy_prompt(
     tmp_path: Path,
     monkeypatch,
     qapp,
@@ -114,10 +114,38 @@ def test_console_uses_studio_branding_and_mathlab_prompt(
         assert window.console_widget is not None
         console_text = window.console_widget.output.toPlainText()
         assert "Welcome to MathTeX Studio" in console_text
-        assert "MathLab interactive terminal ready." in console_text
+        assert "MathLab legacy console ready." in console_text
         assert "Use Up/Down for history and Ctrl+L to clear." in console_text
-        assert window.console_widget.prompt_label.text() == "MathLab>"
+        assert window.console_widget.prompt_label.text() == "mathlab>"
         assert window.console_widget.input.placeholderText() == ""
+    finally:
+        window.close()
+        qapp.processEvents()
+
+
+def test_active_script_extension_selects_repl_panel(
+    tmp_path: Path,
+    monkeypatch,
+    qapp,
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    window = MathTeXQtWindow()
+    ae_path = tmp_path / "scratch.ae"
+    mtx_path = tmp_path / "legacy.mtx"
+    ae_path.write_text("x = 5;\n", encoding="utf-8")
+    mtx_path.write_text("x = 5;\n", encoding="utf-8")
+
+    try:
+        window._open_mtex_in_script(ae_path)
+        qapp.processEvents()
+        assert window.console_dock is not None
+        assert window.console_dock.windowTitle() == "Aether REPL"
+        assert window.console_widget.prompt_label.text() == "aether>"
+
+        window._open_mtex_in_script(mtx_path)
+        qapp.processEvents()
+        assert window.console_dock.windowTitle() == "MathLab Legacy Console"
+        assert window.console_widget.prompt_label.text() == "mathlab>"
     finally:
         window.close()
         qapp.processEvents()

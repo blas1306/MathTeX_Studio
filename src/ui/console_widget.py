@@ -55,6 +55,7 @@ class ConsoleInput(QtWidgets.QLineEdit):  # type: ignore[misc]
 
 class ConsoleWidget(QtWidgets.QWidget):  # type: ignore[misc]
     executed = QtCore.Signal()
+    restarted = QtCore.Signal()
     command_started = QtCore.Signal(str)
     command_finished = QtCore.Signal(bool)
 
@@ -69,7 +70,7 @@ class ConsoleWidget(QtWidgets.QWidget):  # type: ignore[misc]
         self.engine = engine
         self._welcome_text = welcome_text or (
             "Welcome to MathTeX Studio\n"
-            "MathLab interactive terminal ready.\n"
+            "MathLab legacy console ready.\n"
             "Enter runs the current command. Use Up/Down for history and Ctrl+L to clear."
         )
 
@@ -135,7 +136,11 @@ class ConsoleWidget(QtWidgets.QWidget):  # type: ignore[misc]
         self.clear_btn = QtWidgets.QToolButton(self.input_row)
         self.clear_btn.setObjectName("mathLabConsoleUtilityButton")
         self.clear_btn.setText("Clear")
-        self.clear_btn.setToolTip("Clear the console transcript (Ctrl+L).")
+        self.clear_btn.setToolTip("Clear the REPL transcript (Ctrl+L).")
+        self.restart_btn = QtWidgets.QToolButton(self.input_row)
+        self.restart_btn.setObjectName("mathLabConsoleUtilityButton")
+        self.restart_btn.setText("Restart REPL")
+        self.restart_btn.setToolTip("Restart the current REPL session.")
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -152,22 +157,46 @@ class ConsoleWidget(QtWidgets.QWidget):  # type: ignore[misc]
         input_layout.addWidget(self.prompt_label)
         input_layout.addWidget(self.input, 1)
         input_layout.addWidget(self.clear_btn)
+        input_layout.addWidget(self.restart_btn)
         terminal_layout.addWidget(self.input_row)
         layout.addWidget(self.terminal_frame, 1)
 
         self.input.returnPressed.connect(self._submit)
         self.clear_btn.clicked.connect(self.clear)
+        self.restart_btn.clicked.connect(self.restart_session)
         self.clear_shortcut = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+L"), self)
         self.clear_shortcut.activated.connect(self.clear)
         self.setFocusProxy(self.input)
 
         self.clear()
 
+    def set_engine(self, engine: ConsoleEngine, *, welcome_text: str | None = None, clear: bool = True) -> None:
+        self.engine = engine
+        self.input.engine = engine
+        self.prompt_label.setText(self.engine.prompt.rstrip())
+        profile = getattr(engine, "profile", None)
+        if welcome_text is not None:
+            self._welcome_text = welcome_text
+        elif profile is not None:
+            self._welcome_text = profile.welcome_text
+        restart_label = getattr(profile, "restart_label", "Restart REPL") if profile is not None else "Restart"
+        self.restart_btn.setText(restart_label)
+        self.restart_btn.setToolTip(f"{restart_label} for the current session.")
+        if clear:
+            self.clear()
+
     def clear(self) -> None:
         self.output.setPlainText("")
         self.input.clear()
         if self._welcome_text:
             self._append_raw(self._welcome_text, ensure_newline=True, kind="status")
+        self.input.setFocus()
+
+    def restart_session(self) -> None:
+        events = self.engine.reset_environment()
+        self.clear()
+        self.render_events(events)
+        self.restarted.emit()
         self.input.setFocus()
 
     def append_output(self, text: str, ensure_newline: bool = True, *, kind: str = "stdout") -> None:

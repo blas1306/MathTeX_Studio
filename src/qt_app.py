@@ -15,7 +15,7 @@ from auto_compile import AutoCompileController, CompileTrigger
 from app_preferences import AppPreferences, AppPreferencesStore
 from autocomplete_engine import AutocompleteMatch, AutocompleteRequest, build_autocomplete_suggestions, detect_autocomplete_match
 from command_catalog import CommandSuggestion
-from console_engine import ConsoleEngine, MathRuntime, capture_to_events
+from console_engine import MathRuntime, capture_to_events
 from diagnostics import diagnostic_line_offset
 from editor_pdf_sync import EditorPdfSyncMap
 from latex_lang import (
@@ -26,6 +26,7 @@ from latex_lang import (
     change_working_dir,
     get_working_dir,
 )
+from language_runtime import AETHER_RUNTIME, runtime_for_file, run_source_for_file
 from mtex_executor import (
     ejecutar_mtex,
     explain_latex_build_failure,
@@ -41,6 +42,7 @@ from project_outputs import ProjectOutputManager
 from project_system import ProjectInfo, ProjectManager, ProjectRegistry, default_projects_root
 from notebook_editor_view import NotebookEditorView
 from project_widgets import ProjectCreationDialog, ProjectHomeWidget, ProjectWorkspaceWidget
+from repl import ReplController, create_aether_repl, create_mathlab_repl
 from ui.console_widget import ConsoleWidget as DockConsoleWidget
 
 try:  # pragma: no cover - depende de la instalacion del usuario
@@ -1082,7 +1084,9 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self._temp_preview_path = Path(self._temp_preview_dir.name)
         self._temp_preview_path.mkdir(parents=True, exist_ok=True)
         self.runtime = MathRuntime()
-        self.console_engine = ConsoleEngine(self.runtime, prompt="MathLab> ")
+        self.mathlab_repl = create_mathlab_repl(self.runtime)
+        self.aether_repl = create_aether_repl()
+        self.console_engine: ReplController = self.mathlab_repl
         self._plot_listener_registered = False
         self._plot_windows: list[QtWidgets.QMainWindow] = []
         self._untitled_counter = 1
@@ -1114,6 +1118,8 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self._auto_compile_timer.timeout.connect(self.trigger_auto_build)
         self._editor_pdf_sync = EditorPdfSyncMap()
         self.console_dock: QtWidgets.QDockWidget | None = None
+        self.console_panel_title_label: QtWidgets.QLabel | None = None
+        self.console_panel_subtitle_label: QtWidgets.QLabel | None = None
         self.console_toggle_btn: QtWidgets.QPushButton | None = None
         self.console_restore_btn: QtWidgets.QPushButton | None = None
         self.runtime_status_label: QtWidgets.QLabel | None = None
@@ -1145,10 +1151,15 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self.setCentralWidget(central_tabs)
         self._init_restore_buttons()
 
-        self.console_widget = DockConsoleWidget(self.console_engine, self)
+        self.console_widget = DockConsoleWidget(
+            self.console_engine,
+            self,
+            welcome_text=self.console_engine.profile.welcome_text,
+        )
         self.console_widget.command_started.connect(self._on_console_command_started)
         self.console_widget.command_finished.connect(self._on_console_command_finished)
         self.console_widget.executed.connect(self.refresh_workspace_view)
+        self.console_widget.restarted.connect(self.refresh_workspace_view)
         self._initialize_menu_actions()
         if self.project_workspace_widget is not None:
             self.project_workspace_widget.set_sync_actions(
@@ -1362,7 +1373,9 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self.statusBar().showMessage(message or state)
 
     def _on_console_command_started(self, _command: str) -> None:
-        self._set_runtime_status("Running", tone="info", message="Running MathLab command...")
+        profile = self.console_engine.profile
+        label = "Aether input" if profile.id == "aether" else "MathLab command"
+        self._set_runtime_status("Running", tone="info", message=f"Running {label}...")
 
     def _on_console_command_finished(self, success: bool) -> None:
         if success:
@@ -1541,8 +1554,38 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             self._handle_active_context_changed()
 
     def _handle_active_context_changed(self) -> None:
+        self._sync_repl_for_active_script()
         self._sync_console_for_active_tab()
         self._refresh_menu_bar_for_active_context()
+
+    def _handle_script_tab_changed(self) -> None:
+        self._sync_repl_for_active_script()
+        self._refresh_menu_bar_for_active_context()
+
+    def _current_repl_controller(self) -> ReplController:
+        doc = self._current_script_doc() if hasattr(self, "script_tab_widget") else None
+        runtime = runtime_for_file((doc or {}).get("path") or (doc or {}).get("name"))
+        if runtime == AETHER_RUNTIME:
+            return self.aether_repl
+        return self.mathlab_repl
+
+    def _sync_repl_for_active_script(self) -> None:
+        target = self._current_repl_controller()
+        changed = target is not self.console_engine
+        self.console_engine = target
+        if hasattr(self, "console_widget") and self.console_widget is not None:
+            self.console_widget.set_engine(target, clear=changed)
+        self._apply_repl_panel_profile()
+        self.refresh_workspace_view()
+
+    def _apply_repl_panel_profile(self) -> None:
+        profile = self.console_engine.profile
+        if self.console_dock is not None:
+            self.console_dock.setWindowTitle(profile.title)
+        if self.console_panel_title_label is not None:
+            self.console_panel_title_label.setText(profile.title)
+        if self.console_panel_subtitle_label is not None:
+            self.console_panel_subtitle_label.setText(profile.subtitle)
 
     def _refresh_menu_bar_for_active_context(self) -> None:
         if not self._menu_actions:
@@ -1890,7 +1933,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         run_sel_icon = self._compose_icon(run_all_icon, cursor_icon)
 
         new_btn = self._make_script_icon_button(new_icon, "New File")
-        open_btn = self._make_script_icon_button(open_icon, "Open .mtx")
+        open_btn = self._make_script_icon_button(open_icon, "Open .mtx or .ae")
         save_btn = self._make_script_icon_button(save_icon, "Save")
         save_as_btn = self._make_script_icon_button(save_as_icon, "Save As...")
         run_all = self._make_script_icon_button(run_all_icon, "Run All (Ctrl+Enter)")
@@ -1909,10 +1952,10 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self.script_tab_widget.setObjectName("mathLabScriptTabs")
         self.script_tab_widget.setTabsClosable(True)
         self.script_tab_widget.tabCloseRequested.connect(self._request_close_script_tab)
-        self.script_tab_widget.currentChanged.connect(lambda _idx: self._refresh_menu_bar_for_active_context())
+        self.script_tab_widget.currentChanged.connect(lambda _idx: self._handle_script_tab_changed())
         editor_panel = self._create_mathlab_panel(
             "Editor",
-            "Edit and run the active .mtx script",
+            "Edit and run the active .mtx or .ae script",
             self.script_tab_widget,
             variant="primary",
         )
@@ -2041,15 +2084,17 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         return name or "untitled.mtx"
 
     def _build_console_dock(self) -> None:
-        dock = QtWidgets.QDockWidget("Console", self)
-        dock.setWidget(
-            self._create_mathlab_panel(
-                "Console",
-                "Interactive MathLab terminal session",
-                self.console_widget,
-                variant="muted",
-            )
+        profile = self.console_engine.profile
+        dock = QtWidgets.QDockWidget(profile.title, self)
+        panel = self._create_mathlab_panel(
+            profile.title,
+            profile.subtitle,
+            self.console_widget,
+            variant="muted",
         )
+        self.console_panel_title_label = panel.findChild(QtWidgets.QLabel, "mathLabPanelTitle")
+        self.console_panel_subtitle_label = panel.findChild(QtWidgets.QLabel, "mathLabPanelSubtitle")
+        dock.setWidget(panel)
         dock.setObjectName("ConsoleDock")
         dock.setAllowedAreas(
             QtCore.Qt.DockWidgetArea.BottomDockWidgetArea
@@ -2203,7 +2248,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         table = QtWidgets.QTableWidget()
         table.setObjectName("mathLabWorkspaceTable")
         table.setColumnCount(4)
-        table.setHorizontalHeaderLabels(["Name", "Type", "Size", "Summary"])
+        table.setHorizontalHeaderLabels(["Name", "Type", "Shape", "Summary"])
         table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
@@ -2237,7 +2282,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
 
     def refresh_workspace_view(self) -> None:
         try:
-            items = self.runtime.workspace_snapshot()
+            items = self._current_workspace_snapshot()
         except Exception:
             items = []
         table = self.workspace_table
@@ -2248,8 +2293,8 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             for row_idx, info in enumerate(items):
                 row_values = [
                     info.get("name", ""),
-                    info.get("class", ""),
-                    info.get("size", ""),
+                    info.get("type") or info.get("class", ""),
+                    info.get("shape") or info.get("size", ""),
                     info.get("summary", ""),
                 ]
                 for col_idx, value in enumerate(row_values):
@@ -2258,6 +2303,9 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
                     table.setItem(row_idx, col_idx, item)
             table.setSortingEnabled(True)
             self._apply_workspace_column_layout(table)
+
+    def _current_workspace_snapshot(self) -> list[dict[str, str]]:
+        return self.console_engine.workspace_snapshot()
 
     # ----- Script docs ----------------------------------------------------
     def _new_script_file(self, initial: bool = False) -> None:
@@ -2268,7 +2316,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
     def _create_script_document(self, name: str, path: Path | None, content: str, announce: bool) -> None:
         editor = CodeEditor(enable_autocomplete=True)
         editor.set_autocomplete_document_kind("script")
-        editor.set_autocomplete_workspace_provider(self.runtime.workspace_snapshot)
+        editor.set_autocomplete_workspace_provider(self._current_workspace_snapshot)
         editor.set_surface_theme(
             background=MATHLAB_EDITOR_BG,
             line_number_color="#858585",
@@ -2281,6 +2329,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         doc = {"widget": editor, "path": path, "name": name, "dirty": False, "tab_index": idx}
         self.script_docs.append(doc)
         self._update_script_tab_title(doc)
+        self._sync_repl_for_active_script()
         self._refresh_menu_bar_for_active_context()
 
     def _current_script_doc(self):
@@ -2333,6 +2382,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         if doc in self.script_docs:
             self.script_docs.remove(doc)
 
+        self._sync_repl_for_active_script()
         self._refresh_menu_bar_for_active_context()
 
     def _close_current_script(self) -> None:
@@ -2374,14 +2424,14 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             initial = doc.get("name")
         filename, _ = QtWidgets.QFileDialog.getSaveFileName(
             self,
-            "Save .mtx Script",
+            "Save Script",
             str(get_working_dir() / initial),
-            "MathTeX Files (*.mtx);;All Files (*)",
+            "Script Files (*.mtx *.ae);;MathTeX Files (*.mtx);;Aether Files (*.ae);;All Files (*)",
         )
         if not filename:
             return None
         path = Path(filename)
-        if path.suffix.lower() != ".mtx":
+        if path.suffix.lower() not in {".mtx", ".ae"}:
             path = path.with_suffix(".mtx")
         return path
 
@@ -2402,6 +2452,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         doc["name"] = path.name
         doc["dirty"] = False
         self._update_script_tab_title(doc)
+        self._sync_repl_for_active_script()
         return True
 
     def _save_script_document(self, doc) -> bool:
@@ -2460,9 +2511,9 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         if path is None:
             filename, _ = QtWidgets.QFileDialog.getOpenFileName(
                 self,
-                "Open .mtx File in MathLab",
+                "Open Script File",
                 str(get_working_dir()),
-                "MathTeX Files (*.mtx);;All Files (*)",
+                "Script Files (*.mtx *.ae);;MathTeX Files (*.mtx);;Aether Files (*.ae);;All Files (*)",
             )
             if not filename:
                 return
@@ -2851,7 +2902,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
 
     def _handle_project_file_activation(self, path: str) -> None:
         file_path = Path(path)
-        if file_path.suffix.lower() == ".mtx":
+        if file_path.suffix.lower() in {".mtx", ".ae"}:
             self._open_mtex_in_script(file_path)
             return
         if file_path.suffix.lower() == ".mtn":
@@ -3231,6 +3282,10 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             return
         widget: CodeEditor = doc["widget"]
         contenido = widget.toPlainText()
+        runtime = runtime_for_file(doc.get("path") or doc.get("name"))
+        if runtime == AETHER_RUNTIME:
+            self._run_aether_script(doc, contenido)
+            return
         statements = split_code_statements_with_lines(contenido)
         if not statements:
             self.append_output("There is no code to run.")
@@ -3257,6 +3312,24 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             else:
                 self._set_runtime_status("Done", tone="success", message=f"{script_name} finished.")
 
+    def _run_aether_script(self, doc: dict, source: str) -> None:
+        if not source.strip():
+            self.append_output("There is no code to run.")
+            return
+        script_name = self._script_banner_name(doc)
+        self._set_runtime_status("Running", tone="info", message=f"Running {script_name} with Aether...")
+        self.append_output(f">> {script_name}")
+        result = run_source_for_file(doc.get("path") or doc.get("name"), source)
+        if result.output:
+            self.append_output(result.output, ensure_newline=False)
+        if result.success:
+            if not result.output:
+                self.append_output("Aether program executed successfully.")
+            self._set_runtime_status("Done", tone="success", message=f"{script_name} finished.")
+            return
+        self.append_output(result.error or "Aether execution failed.")
+        self._set_runtime_status("Error", tone="error", message=f"{script_name} stopped due to an error.")
+
     def run_selection(self) -> None:
         doc = self._current_script_doc()
         if not doc:
@@ -3270,6 +3343,10 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         seleccion = cursor.selectedText().replace("\u2029", "\n")
         selection_start = min(cursor.selectionStart(), cursor.selectionEnd())
         selection_start_line = widget.document().findBlock(selection_start).blockNumber() + 1
+        runtime = runtime_for_file(doc.get("path") or doc.get("name"))
+        if runtime == AETHER_RUNTIME:
+            self._run_aether_selection(doc, seleccion)
+            return
         statements = split_code_statements_with_lines(seleccion)
         if not statements:
             self.append_output("The selection is empty.")
@@ -3296,6 +3373,26 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
                 self._set_runtime_status("Error", tone="error", message=f"Selection from {script_name} stopped due to an error.")
             else:
                 self._set_runtime_status("Done", tone="success", message=f"Selection from {script_name} finished.")
+
+    def _run_aether_selection(self, doc: dict, source: str) -> None:
+        if not source.strip():
+            self.append_output("The selection is empty.")
+            return
+        script_name = self._script_banner_name(doc)
+        self._set_runtime_status("Running", tone="info", message=f"Running Aether selection from {script_name}...")
+        self.append_output("[Running selection]")
+        self.append_output(f">> {script_name}")
+        result = run_source_for_file(doc.get("path") or doc.get("name"), source)
+        if result.output:
+            self.append_output(result.output, ensure_newline=False)
+        if result.success:
+            if not result.output:
+                self.append_output("Aether program executed successfully.")
+            self.append_output("[Selection finished]\n")
+            self._set_runtime_status("Done", tone="success", message=f"Selection from {script_name} finished.")
+            return
+        self.append_output(result.error or "Aether execution failed.")
+        self._set_runtime_status("Error", tone="error", message=f"Selection from {script_name} stopped due to an error.")
 
     # ----- Plot listener --------------------------------------------------
     def _register_plot_listener(self) -> None:

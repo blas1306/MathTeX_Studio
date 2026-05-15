@@ -1,0 +1,73 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+
+from ..errors import AetherRuntimeError
+from ..types import AetherType, AetherValue
+
+
+BuiltinFunction = Callable[[list[AetherValue]], AetherValue]
+OutputWriter = Callable[[str], None]
+RuntimeFactory = Callable[[OutputWriter], BuiltinFunction]
+BuiltinTypeChecker = Callable[[list[AetherType | None]], AetherType | None]
+ArityValidator = Callable[[int], None]
+
+
+@dataclass(frozen=True)
+class BuiltinDefinition:
+    name: str
+    make_runtime: RuntimeFactory
+    infer_type: BuiltinTypeChecker
+    validate_arity: ArityValidator | None = None
+
+
+def make_builtin_registry(write_output: OutputWriter) -> dict[str, BuiltinFunction]:
+    return {name: definition.make_runtime(write_output) for name, definition in _definitions().items()}
+
+
+def make_builtins(write_output: OutputWriter) -> dict[str, BuiltinFunction]:
+    return make_builtin_registry(write_output)
+
+
+def get_builtin(name: str, write_output: OutputWriter) -> BuiltinFunction | None:
+    definition = _definitions().get(name)
+    if definition is None:
+        return None
+    return definition.make_runtime(write_output)
+
+
+def is_builtin(name: str) -> bool:
+    return name in _definitions()
+
+
+def call_builtin(name: str, args: list[AetherValue], write_output: OutputWriter) -> AetherValue:
+    builtin = get_builtin(name, write_output)
+    if builtin is None:
+        raise AetherRuntimeError(f"Undefined builtin '{name}'.")
+    return builtin(args)
+
+
+def infer_builtin_type(name: str, arg_types: list[AetherType | None]) -> AetherType | None:
+    definition = _definitions().get(name)
+    if definition is None:
+        raise AetherRuntimeError(f"Undefined builtin '{name}'.")
+    return definition.infer_type(arg_types)
+
+
+def validate_builtin_arity(name: str, arg_count: int) -> None:
+    definition = _definitions().get(name)
+    if definition is None:
+        raise AetherRuntimeError(f"Undefined builtin '{name}'.")
+    if definition.validate_arity is not None:
+        definition.validate_arity(arg_count)
+
+
+def _definitions() -> dict[str, BuiltinDefinition]:
+    from .core import builtin_definitions as core_builtin_definitions
+    from .math.linear_algebra import builtin_definitions as linear_algebra_builtin_definitions
+
+    definitions: dict[str, BuiltinDefinition] = {}
+    for definition in [*core_builtin_definitions(), *linear_algebra_builtin_definitions()]:
+        definitions[definition.name] = definition
+    return definitions

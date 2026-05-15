@@ -4,6 +4,9 @@
 
 MathTeX Studio combines the workflow of LaTeX, MATLAB/Octave, Jupyter, and scientific computing tools into a single environment focused on mathematical and technical work.
 
+> Aether v0 is now being developed as the next isolated language core for Aether Studio. See the initial specification in [docs/aether/AETHER_V0_SPEC.md](docs/aether/AETHER_V0_SPEC.md).
+> Experimental `.ae` files can be opened and run from the editor with the Aether runtime. The lower panel now switches to a persistent Aether REPL for `.ae` files, while `.mtx` files remain supported through the MathLab legacy console during the transition.
+
 Instead of separating:
 
 - computation
@@ -43,7 +46,20 @@ MathTeX Studio currently revolves around two complementary formats:
 | Format | Purpose |
 |---|---|
 | `.mtx` | Interactive mathematical scripting |
+| `.ae` | Experimental Aether scripts |
 | `.mtex` | Executable LaTeX documents |
+
+---
+
+# REPL Transition
+
+The interactive panel is currently runtime-aware:
+
+- `.ae` files use an `Aether REPL` with persistent `AetherSession` state and the `aether>` prompt.
+- `.mtx` files keep using the `MathLab Legacy Console` with the `mathlab>` prompt.
+- Aether REPL output is intentionally explicit for now: use `print(...)` or `println(...)`. Expression auto-printing, shell execution, completion, and advanced multiline input are not part of this transition step yet.
+
+The REPL UX is still in transition while the rest of the application keeps the existing MathTeX/MathLab workflow.
 
 ---
 
@@ -566,4 +582,3 @@ This means:
 - derivative distributed works must also remain open source under GPLv3
 
 See the `LICENSE` file for details.
-

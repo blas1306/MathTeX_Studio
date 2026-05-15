@@ -1,0 +1,277 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from math import trunc
+from typing import Any
+
+from .errors import AetherTypeError
+
+
+TYPE_NAMES = {"int", "float", "double", "string", "boolean"}
+NUMERIC_TYPES = {"int", "float", "double"}
+WIDENING: dict[str, set[str]] = {
+    "int": {"float", "double"},
+    "float": {"double"},
+    "double": set(),
+    "string": set(),
+    "boolean": set(),
+}
+
+
+@dataclass(frozen=True, eq=False)
+class ArrayType:
+    element_type: AetherType
+
+    def __post_init__(self) -> None:
+        if not is_known_type(self.element_type):
+            raise AetherTypeError(f"Unknown array element type '{type_to_string(self.element_type)}'.")
+
+    def __str__(self) -> str:
+        return f"{type_to_string(self.element_type)}[]"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, ArrayType):
+            return self.element_type == other.element_type
+        if isinstance(other, str):
+            return str(self) == other
+        return False
+
+    def __hash__(self) -> int:
+        return hash(str(self))
+
+
+@dataclass(frozen=True, eq=False)
+class MatrixType:
+    element_type: str
+    rows: int | None = None
+    cols: int | None = None
+    vector: bool = False
+
+    def __post_init__(self) -> None:
+        if self.element_type not in TYPE_NAMES:
+            raise AetherTypeError(f"Unknown matrix element type '{self.element_type}'.")
+        if self.rows is not None and self.rows < 0:
+            raise AetherTypeError("Matrix row count cannot be negative.")
+        if self.cols is not None and self.cols < 0:
+            raise AetherTypeError("Matrix column count cannot be negative.")
+        if self.vector and self.rows is not None and self.cols is not None and self.rows > 1 and self.cols > 1:
+            raise AetherTypeError("Vector<T> only accepts matrix values with shape 1xN or Nx1.")
+
+    def with_shape(self, rows: int, cols: int) -> "MatrixType":
+        return MatrixType(self.element_type, rows, cols, self.vector)
+
+    def as_matrix(self) -> "MatrixType":
+        return MatrixType(self.element_type, self.rows, self.cols)
+
+    def __str__(self) -> str:
+        name = "Vector" if self.vector else "Matrix"
+        return f"{name}<{self.element_type}>"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, MatrixType):
+            return (
+                self.element_type == other.element_type
+                and self.rows == other.rows
+                and self.cols == other.cols
+                and self.vector == other.vector
+            )
+        if isinstance(other, str):
+            return str(self) == other
+        return False
+
+    def __hash__(self) -> int:
+        return hash((self.element_type, self.rows, self.cols, self.vector))
+
+
+AetherType = str | ArrayType | MatrixType
+
+
+@dataclass(frozen=True)
+class AetherValue:
+    type_name: AetherType
+    value: Any
+
+
+def default_text(value: AetherValue) -> str:
+    from .formatting import format_value
+
+    return format_value(value)
+
+
+def infer_type(value: object) -> str:
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "int"
+    if isinstance(value, float):
+        return "double"
+    if isinstance(value, str):
+        return "string"
+    raise AetherTypeError(f"Cannot infer Aether type for value {value!r}.")
+
+
+def type_to_string(type_name: AetherType) -> str:
+    return str(type_name)
+
+
+def is_known_type(type_name: AetherType) -> bool:
+    if isinstance(type_name, ArrayType):
+        return is_known_type(type_name.element_type)
+    if isinstance(type_name, MatrixType):
+        return type_name.element_type in TYPE_NAMES
+    return type_name in TYPE_NAMES
+
+
+def is_array_type(type_name: AetherType) -> bool:
+    return isinstance(type_name, ArrayType)
+
+
+def is_matrix_type(type_name: AetherType) -> bool:
+    return isinstance(type_name, MatrixType)
+
+
+def is_indexable_type(type_name: AetherType) -> bool:
+    return isinstance(type_name, (ArrayType, MatrixType))
+
+
+def array_element_type(type_name: AetherType) -> AetherType:
+    if not isinstance(type_name, ArrayType):
+        raise AetherTypeError(f"Expected array type, got '{type_to_string(type_name)}'.")
+    return type_name.element_type
+
+
+def matrix_row_type(type_name: AetherType) -> ArrayType:
+    if not isinstance(type_name, MatrixType):
+        raise AetherTypeError(f"Expected matrix type, got '{type_to_string(type_name)}'.")
+    return ArrayType(type_name.element_type)
+
+
+def can_implicitly_convert(from_type: AetherType, to_type: AetherType) -> bool:
+    if isinstance(from_type, MatrixType) or isinstance(to_type, MatrixType):
+        if not isinstance(from_type, MatrixType) or not isinstance(to_type, MatrixType):
+            return False
+        if not can_implicitly_convert(from_type.element_type, to_type.element_type):
+            return False
+        if to_type.vector and from_type.rows is not None and from_type.cols is not None:
+            if from_type.rows > 1 and from_type.cols > 1:
+                return False
+        if to_type.rows is not None and from_type.rows is not None and to_type.rows != from_type.rows:
+            return False
+        if to_type.cols is not None and from_type.cols is not None and to_type.cols != from_type.cols:
+            return False
+        return True
+    if isinstance(from_type, ArrayType) or isinstance(to_type, ArrayType):
+        return from_type == to_type
+    return from_type == to_type or to_type in WIDENING.get(from_type, set())
+
+
+def coerce_implicit(value: AetherValue, target_type: AetherType) -> AetherValue:
+    if not is_known_type(target_type):
+        raise AetherTypeError(f"Unknown type '{type_to_string(target_type)}'.")
+    if value.type_name == target_type:
+        return value
+    if isinstance(target_type, MatrixType):
+        return coerce_matrix_value(value, target_type)
+    if not can_implicitly_convert(value.type_name, target_type):
+        raise AetherTypeError(
+            f"Cannot implicitly convert '{type_to_string(value.type_name)}' to '{type_to_string(target_type)}'. "
+            f"Use {type_to_string(target_type)}(...) for explicit conversion."
+        )
+    return AetherValue(target_type, _coerce_python_value(value.value, target_type))
+
+
+def coerce_matrix_value(value: AetherValue, target_type: MatrixType) -> AetherValue:
+    if not isinstance(value.type_name, MatrixType):
+        raise AetherTypeError(
+            f"Cannot implicitly convert '{type_to_string(value.type_name)}' to '{type_to_string(target_type)}'."
+        )
+    source_type = value.type_name
+    rows = source_type.rows if source_type.rows is not None else len(value.value)
+    cols = source_type.cols
+    if cols is None:
+        cols = len(value.value[0].value) if value.value else 0
+    source_type = MatrixType(source_type.element_type, rows, cols, source_type.vector)
+    if not can_implicitly_convert(source_type, target_type):
+        raise AetherTypeError(
+            f"Cannot implicitly convert '{type_to_string(value.type_name)}' to '{type_to_string(target_type)}'. "
+            f"Use {type_to_string(target_type)}(...) for explicit conversion."
+        )
+    row_type = ArrayType(target_type.element_type)
+    coerced_rows: list[AetherValue] = []
+    for row in value.value:
+        coerced_rows.append(coerce_array_literal_value(row, row_type))
+    concrete_type = MatrixType(target_type.element_type, rows, cols, target_type.vector)
+    return AetherValue(concrete_type, coerced_rows)
+
+
+def coerce_array_literal_value(value: AetherValue, target_type: AetherType) -> AetherValue:
+    if not isinstance(target_type, ArrayType):
+        return coerce_implicit(value, target_type)
+    if not isinstance(value.type_name, ArrayType):
+        raise AetherTypeError(
+            f"Cannot implicitly convert '{type_to_string(value.type_name)}' to '{type_to_string(target_type)}'."
+        )
+    coerced_elements: list[AetherValue] = []
+    for element in value.value:
+        target_element_type = target_type.element_type
+        if isinstance(target_element_type, ArrayType):
+            coerced_elements.append(coerce_array_literal_value(element, target_element_type))
+            continue
+        if not isinstance(element.type_name, ArrayType):
+            if can_implicitly_convert(element.type_name, target_element_type):
+                coerced_elements.append(coerce_implicit(element, target_element_type))
+                continue
+            if target_element_type == "float" and element.type_name == "double":
+                coerced_elements.append(AetherValue("float", float(element.value)))
+                continue
+        raise AetherTypeError(
+            f"Cannot implicitly convert '{type_to_string(element.type_name)}' to '{type_to_string(target_element_type)}'. "
+            f"Use {type_to_string(target_element_type)}(...) for explicit conversion."
+        )
+    return AetherValue(target_type, coerced_elements)
+
+
+def explicit_cast(target_type: str, value: AetherValue) -> AetherValue:
+    if target_type not in TYPE_NAMES:
+        raise AetherTypeError(f"Unknown type '{target_type}'.")
+    if target_type == "boolean" and value.type_name != "boolean":
+        raise AetherTypeError(f"Cannot explicitly convert '{value.type_name}' to 'boolean' yet.")
+    if target_type in {"int", "float", "double"} and value.type_name not in NUMERIC_TYPES:
+        raise AetherTypeError(f"Cannot explicitly convert '{value.type_name}' to '{target_type}'.")
+    if target_type != "string" and value.type_name == "string":
+        raise AetherTypeError(f"Cannot explicitly convert 'string' to '{target_type}'.")
+    if target_type == "string":
+        return AetherValue("string", default_text(value))
+    if target_type == "boolean":
+        return value
+    return AetherValue(target_type, _coerce_python_value(value.value, target_type))
+
+
+def promote_numeric(left_type: str, right_type: str, operator: str) -> str:
+    if left_type not in NUMERIC_TYPES or right_type not in NUMERIC_TYPES:
+        raise AetherTypeError(f"Operator '{operator}' requires numeric operands.")
+    if operator == "/":
+        if "double" in {left_type, right_type}:
+            return "double"
+        if "float" in {left_type, right_type}:
+            return "float"
+        return "double"
+    if "double" in {left_type, right_type}:
+        return "double"
+    if "float" in {left_type, right_type}:
+        return "float"
+    return "int"
+
+
+def _coerce_python_value(value: object, target_type: AetherType) -> object:
+    if isinstance(target_type, (ArrayType, MatrixType)):
+        raise AetherTypeError(f"Cannot coerce scalar value to '{target_type}'.")
+    if target_type == "int":
+        return trunc(value)  # type: ignore[arg-type]
+    if target_type in {"float", "double"}:
+        return float(value)  # type: ignore[arg-type]
+    if target_type == "string":
+        return str(value)
+    if target_type == "boolean":
+        return bool(value)
+    raise AetherTypeError(f"Unknown type '{target_type}'.")

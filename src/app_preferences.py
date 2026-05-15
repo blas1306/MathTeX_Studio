@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,6 +14,9 @@ APP_STORAGE_NAME = "MTeX Studio"
 
 
 def default_preferences_path() -> Path:
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        return Path(local_app_data) / APP_STORAGE_NAME / APP_PREFERENCES_FILENAME
     base_dir = Path(user_config_dir(appname=APP_STORAGE_NAME, appauthor=False))
     return base_dir / APP_PREFERENCES_FILENAME
 

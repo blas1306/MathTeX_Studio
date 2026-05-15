@@ -21,6 +21,8 @@ WORKSPACE_LEFT_MIN_WIDTH = 240
 WORKSPACE_EDITOR_MIN_WIDTH = 420
 WORKSPACE_PREVIEW_MIN_WIDTH = 420
 WORKSPACE_DEFAULT_SPLITTER_WEIGHTS = (22, 38, 40)
+AETHER_SCRIPT_SUFFIX = ".ae"
+OPENABLE_PROJECT_SUFFIXES = {".mtex", ".mtx", ".mtn", AETHER_SCRIPT_SUFFIX}
 
 
 def _format_timestamp(raw_value: str | None) -> str:
@@ -287,7 +289,7 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
         tree_actions = QtWidgets.QHBoxLayout()
         tree_actions.setContentsMargins(0, 0, 0, 0)
         tree_actions.setSpacing(WORKSPACE_ROW_SPACING)
-        self.new_file_btn = self._make_tree_action_button("New File", "Create a file in the selected folder")
+        self.new_file_btn = self._make_tree_action_button("New File", "Create a .mtex, .mtx, .ae, or .mtn file")
         self.new_folder_btn = self._make_tree_action_button("New Folder", "Create a folder in the selected folder")
         self.upload_btn = self._make_tree_action_button("Upload", "Copy files into the selected folder")
         self.refresh_tree_btn = self._make_tree_action_button("Refresh", "Refresh the project file tree")
@@ -744,7 +746,7 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
             if item.isExpanded():
                 self._populate_children(item, path)
             return
-        if path.suffix.lower() in {".mtex", ".mtx", ".mtn"}:
+        if path.suffix.lower() in OPENABLE_PROJECT_SUFFIXES:
             self.file_open_requested.emit(str(path))
 
     def _make_tree_action_button(self, text: str, tooltip: str) -> QtWidgets.QToolButton:
@@ -848,7 +850,7 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
     def _create_new_file(self) -> None:
         if self._project is None:
             return
-        name = self._prompt_for_entry_name("New File", "File name", "untitled.mtex")
+        name = self._prompt_for_entry_name("New File", "File name (.mtex, .mtx, .ae, .mtn)", "untitled.mtex")
         if name is None:
             return
         try:
@@ -863,7 +865,7 @@ class ProjectWorkspaceWidget(QtWidgets.QWidget):  # type: ignore[misc]
             QtWidgets.QMessageBox.warning(self, "New File", str(exc))
             return
         self.refresh_file_tree(selected_path=created_path)
-        if created_path.suffix.lower() in {".mtex", ".mtx", ".mtn"}:
+        if created_path.suffix.lower() in OPENABLE_PROJECT_SUFFIXES:
             self.file_open_requested.emit(str(created_path))
 
     def _create_new_folder(self) -> None:

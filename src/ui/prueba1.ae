@@ -1,0 +1,26 @@
+A = [1 2; 3 4];
+println(A);
+
+B = Math.LinearAlgebra.transpose(A);
+println(B);
+
+u = [1 2];
+v = [3; 4];
+
+println(Math.LinearAlgebra.matmul(u, v));
+
+double doble(double x) {
+    return 2*x;
+}
+
+println(doble(3.0));
+
+int fib(int n) {
+    if n <= 1 {
+        return n;
+    }
+    
+    return fib(n-1) + fib(n-2);
+}
+
+println(fib(4));

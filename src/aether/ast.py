@@ -1,0 +1,122 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Protocol
+
+from .types import AetherType
+
+
+@dataclass(frozen=True)
+class Program:
+    statements: list["Statement"]
+
+
+class Statement(Protocol):
+    pass
+
+
+class Expression(Protocol):
+    pass
+
+
+@dataclass(frozen=True)
+class Parameter:
+    type_name: AetherType
+    name: str
+
+
+@dataclass(frozen=True)
+class VarDeclaration:
+    type_name: AetherType
+    name: str
+    initializer: Expression
+
+
+@dataclass(frozen=True)
+class Assignment:
+    name: str
+    expression: Expression
+
+
+@dataclass(frozen=True)
+class IndexAssignment:
+    array: Expression
+    index: Expression
+    expression: Expression
+
+
+@dataclass(frozen=True)
+class ExpressionStatement:
+    expression: Expression
+
+
+@dataclass(frozen=True)
+class IfStatement:
+    condition: Expression
+    body: list[Statement]
+    else_body: list[Statement] | None = None
+
+
+@dataclass(frozen=True)
+class WhileStatement:
+    condition: Expression
+    body: list[Statement]
+
+
+@dataclass(frozen=True)
+class FunctionDeclaration:
+    return_type: AetherType
+    name: str
+    parameters: list[Parameter]
+    body: list[Statement]
+
+
+@dataclass(frozen=True)
+class ReturnStatement:
+    expression: Expression
+
+
+@dataclass(frozen=True)
+class Literal:
+    value: object
+    type_name: str
+
+
+@dataclass(frozen=True)
+class Identifier:
+    name: str
+
+
+@dataclass(frozen=True)
+class UnaryExpression:
+    operator: str
+    operand: Expression
+
+
+@dataclass(frozen=True)
+class BinaryExpression:
+    left: Expression
+    operator: str
+    right: Expression
+
+
+@dataclass(frozen=True)
+class CallExpression:
+    callee: str
+    arguments: list[Expression]
+
+
+@dataclass(frozen=True)
+class ArrayLiteral:
+    elements: list[Expression]
+
+
+@dataclass(frozen=True)
+class MatrixLiteral:
+    rows: list[list[Expression]]
+
+
+@dataclass(frozen=True)
+class IndexExpression:
+    array: Expression
+    index: Expression
