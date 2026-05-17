@@ -16,6 +16,7 @@ class CommandSuggestion:
     priority: int = 100
     match_text: str | None = None
     cursor_backtrack: int | None = None
+    cursor_selection_length: int | None = None
 
 
 def _entry(

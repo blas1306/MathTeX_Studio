@@ -4,12 +4,12 @@ import re
 from dataclasses import dataclass
 from typing import Literal, Sequence
 
+from aether.stdlib.registry import builtin_names
 from command_catalog import COMMAND_CATALOG, CommandSuggestion
 from document_symbols import DocumentSymbol, extract_document_symbols
 
 
-COMMENT_PATTERN = re.compile(r"(?<!\\)%.*|#.*")
-AutocompleteKind = Literal["command", "identifier"]
+AutocompleteKind = Literal["command", "identifier", "member"]
 DocumentKind = Literal["script", "mtex_document"]
 
 
@@ -19,6 +19,7 @@ class AutocompleteMatch:
     prefix: str
     token_start_col: int
     token_end_col: int
+    qualifier: str = ""
 
 
 @dataclass(frozen=True)
@@ -68,41 +69,109 @@ def _keyword_entry(
 
 
 KEYWORD_SUGGESTIONS: tuple[CommandSuggestion, ...] = (
-    _keyword_entry("for", "Start a for-loop block.", insert_text="for ", signature="for ... end", category="control"),
-    _keyword_entry("while", "Start a while-loop block.", insert_text="while ", signature="while ... end", category="control"),
-    _keyword_entry("if", "Start a conditional block.", insert_text="if ", signature="if ... end", category="control"),
-    _keyword_entry("elif", "Add a conditional branch.", insert_text="elif ", signature="elif ...", category="control"),
+    _keyword_entry("for", "Start a for-in loop.", insert_text="for ", signature="for x in iterable { ... }", category="control"),
+    _keyword_entry("while", "Start a while block.", insert_text="while ", signature="while condition { ... }", category="control"),
+    _keyword_entry("if", "Start a conditional block.", insert_text="if ", signature="if condition { ... }", category="control"),
     _keyword_entry("else", "Add an else branch.", category="control"),
-    _keyword_entry("function", "Start a user function definition.", insert_text="function ", signature="function out = name(args)", category="definitions"),
+    _keyword_entry("in", "Separate a for-loop variable from its iterable.", category="control", priority=95),
+    _keyword_entry("function", "Start a user function definition.", insert_text="function ", signature="function int name() { ... }", category="definitions"),
     _keyword_entry("return", "Return from the current function.", category="control"),
-    _keyword_entry("repeat", "Start a repeat-until block.", insert_text="repeat", signature="repeat ... until", category="control"),
-    _keyword_entry("until", "Close a repeat-until block condition.", insert_text="until ", category="control"),
-    _keyword_entry("end", "Close the current block.", category="control"),
-    _keyword_entry("and", "Logical conjunction.", category="operators", priority=90),
-    _keyword_entry("or", "Logical disjunction.", category="operators", priority=90),
-    _keyword_entry("from", "Start an import statement.", insert_text="from ", signature="from module import name", category="imports"),
-    _keyword_entry("import", "Import names from a module.", insert_text="import ", signature="import name", category="imports"),
+    _keyword_entry("true", "Boolean literal.", category="literals", priority=100),
+    _keyword_entry("false", "Boolean literal.", category="literals", priority=100),
+    _keyword_entry("int", "Integer type.", category="types", priority=105),
+    _keyword_entry("double", "Double precision numeric type.", category="types", priority=105),
+    _keyword_entry("float", "Floating point numeric type.", category="types", priority=105),
+    _keyword_entry("string", "String type.", category="types", priority=105),
+    _keyword_entry("boolean", "Boolean type.", category="types", priority=105),
+    _keyword_entry("bool", "Boolean type alias.", insert_text="boolean", signature="boolean", category="types", priority=70),
+    _keyword_entry("Matrix", "Matrix type.", category="types", priority=95),
+    _keyword_entry("Vector", "Vector type.", category="types", priority=95),
 )
 
 
-def _comment_start_col(line_text: str) -> int | None:
-    match = COMMENT_PATTERN.search(line_text)
-    if match is None:
-        return None
-    return match.start()
+def _snippet_entry(
+    name: str,
+    insert_text: str,
+    cursor_col: int,
+    selection_length: int,
+    description: str,
+) -> CommandSuggestion:
+    return CommandSuggestion(
+        name=name,
+        label=name,
+        insert_text=insert_text,
+        signature=insert_text,
+        description=description,
+        category="snippets",
+        kind="snippet",
+        source="language",
+        priority=390,
+        match_text=name,
+        cursor_backtrack=len(insert_text) - cursor_col,
+        cursor_selection_length=selection_length,
+    )
+
+
+SNIPPET_SUGGESTIONS: tuple[CommandSuggestion, ...] = (
+    _snippet_entry("for", "for x in iterable {\n    \n}", len("for "), len("x"), "For-in block snippet."),
+    _snippet_entry("if", "if condition {\n    \n}", len("if "), len("condition"), "Conditional block snippet."),
+    _snippet_entry("while", "while condition {\n    \n}", len("while "), len("condition"), "While block snippet."),
+    _snippet_entry("func", "int name() {\n    \n}", len("int "), len("name"), "Function declaration snippet."),
+)
+
+
+def _line_context(line_text: str, cursor_col: int) -> tuple[bool, int | None]:
+    in_string: str | None = None
+    escaped = False
+    index = 0
+    limit = max(0, min(cursor_col, len(line_text)))
+    while index < limit:
+        char = line_text[index]
+        next_char = line_text[index + 1] if index + 1 < len(line_text) else ""
+
+        if in_string is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == in_string:
+                in_string = None
+            index += 1
+            continue
+
+        if char in {'"', "'"}:
+            in_string = char
+            index += 1
+            continue
+
+        if char == "#" or (char == "%" and (index == 0 or line_text[index - 1] != "\\")):
+            return False, index
+        if char == "/" and next_char == "/":
+            return False, index
+
+        index += 1
+
+    return in_string is not None, None
 
 
 def is_comment_context(line_text: str, cursor_col: int) -> bool:
     if cursor_col < 0 or cursor_col > len(line_text):
         return False
-    comment_start = _comment_start_col(line_text)
+    _in_string, comment_start = _line_context(line_text, cursor_col)
     return comment_start is not None and cursor_col > comment_start
+
+
+def is_string_context(line_text: str, cursor_col: int) -> bool:
+    if cursor_col < 0 or cursor_col > len(line_text):
+        return False
+    in_string, _comment_start = _line_context(line_text, cursor_col)
+    return in_string
 
 
 def detect_command_prefix(line_text: str, cursor_col: int) -> AutocompleteMatch | None:
     if cursor_col < 0 or cursor_col > len(line_text):
         return None
-    if is_comment_context(line_text, cursor_col):
+    if is_comment_context(line_text, cursor_col) or is_string_context(line_text, cursor_col):
         return None
 
     start = cursor_col
@@ -128,7 +197,7 @@ def detect_command_prefix(line_text: str, cursor_col: int) -> AutocompleteMatch 
 def detect_identifier_prefix(line_text: str, cursor_col: int) -> AutocompleteMatch | None:
     if cursor_col < 0 or cursor_col > len(line_text):
         return None
-    if is_comment_context(line_text, cursor_col):
+    if is_comment_context(line_text, cursor_col) or is_string_context(line_text, cursor_col):
         return None
 
     start = cursor_col
@@ -154,8 +223,49 @@ def detect_identifier_prefix(line_text: str, cursor_col: int) -> AutocompleteMat
     )
 
 
+def detect_member_prefix(line_text: str, cursor_col: int) -> AutocompleteMatch | None:
+    if cursor_col < 0 or cursor_col > len(line_text):
+        return None
+    if is_comment_context(line_text, cursor_col) or is_string_context(line_text, cursor_col):
+        return None
+
+    token_start = cursor_col
+    while token_start > 0 and _is_identifier_char(line_text[token_start - 1]):
+        token_start -= 1
+
+    if token_start == 0 or line_text[token_start - 1] != ".":
+        return None
+
+    qualifier_end = token_start - 1
+    qualifier_start = qualifier_end
+    while qualifier_start > 0 and (
+        _is_identifier_char(line_text[qualifier_start - 1]) or line_text[qualifier_start - 1] == "."
+    ):
+        qualifier_start -= 1
+
+    qualifier = line_text[qualifier_start:qualifier_end]
+    if not qualifier or any(not part or not _is_identifier_start_char(part[0]) for part in qualifier.split(".")):
+        return None
+
+    token_end = cursor_col
+    while token_end < len(line_text) and _is_identifier_char(line_text[token_end]):
+        token_end += 1
+
+    return AutocompleteMatch(
+        kind="member",
+        prefix=line_text[token_start:cursor_col],
+        token_start_col=token_start,
+        token_end_col=token_end,
+        qualifier=qualifier,
+    )
+
+
 def detect_autocomplete_match(line_text: str, cursor_col: int) -> AutocompleteMatch | None:
-    return detect_command_prefix(line_text, cursor_col) or detect_identifier_prefix(line_text, cursor_col)
+    return (
+        detect_command_prefix(line_text, cursor_col)
+        or detect_member_prefix(line_text, cursor_col)
+        or detect_identifier_prefix(line_text, cursor_col)
+    )
 
 
 def _match_prefix(candidate: str, prefix: str) -> bool:
@@ -263,8 +373,91 @@ def _document_symbol_suggestions(prefix: str, document_text: str) -> list[Comman
     return suggestions
 
 
+def _builtin_suggestions(prefix: str) -> list[CommandSuggestion]:
+    suggestions: list[CommandSuggestion] = []
+    keyword_names = {item.name for item in KEYWORD_SUGGESTIONS}
+    for name in builtin_names():
+        if "." in name or name in keyword_names or not _match_prefix(name, prefix):
+            continue
+        suggestions.append(
+            CommandSuggestion(
+                name=name,
+                label=name,
+                insert_text=f"{name}()",
+                signature=f"{name}(...)",
+                description="Aether builtin.",
+                category="builtins",
+                kind="function",
+                source="stdlib",
+                priority=230,
+                match_text=name,
+                cursor_backtrack=1,
+            )
+        )
+    return suggestions
+
+
+def _stdlib_member_suggestions(qualifier: str, prefix: str) -> list[CommandSuggestion]:
+    children: dict[str, str] = {}
+    function_names: list[str] = []
+    qualifier_prefix = f"{qualifier}."
+
+    for name in builtin_names():
+        if not name.startswith(qualifier_prefix):
+            continue
+        remainder = name[len(qualifier_prefix) :]
+        head, _dot, tail = remainder.partition(".")
+        if tail:
+            children[head] = f"{qualifier_prefix}{head}"
+        elif head:
+            function_names.append(head)
+
+    suggestions: list[CommandSuggestion] = []
+    for child in sorted(children):
+        if not _match_prefix(child, prefix):
+            continue
+        suggestions.append(
+            CommandSuggestion(
+                name=child,
+                label=child,
+                insert_text=child,
+                signature=children[child],
+                description="Aether namespace.",
+                category="modules",
+                kind="module",
+                source="stdlib",
+                priority=420,
+                match_text=child,
+            )
+        )
+
+    for function_name in sorted(function_names):
+        if not _match_prefix(function_name, prefix):
+            continue
+        suggestions.append(
+            CommandSuggestion(
+                name=function_name,
+                label=function_name,
+                insert_text=f"{function_name}()",
+                signature=f"{qualifier_prefix}{function_name}(...)",
+                description="Aether stdlib function.",
+                category="stdlib",
+                kind="function",
+                source="stdlib",
+                priority=410,
+                match_text=function_name,
+                cursor_backtrack=1,
+            )
+        )
+    return suggestions
+
+
 def _keyword_suggestions(prefix: str) -> list[CommandSuggestion]:
     return [item for item in KEYWORD_SUGGESTIONS if _match_prefix(item.match_text or item.name, prefix)]
+
+
+def _snippet_suggestions(prefix: str) -> list[CommandSuggestion]:
+    return [item for item in SNIPPET_SUGGESTIONS if (item.match_text or item.name).casefold() == prefix.casefold()]
 
 
 def _next_non_space_char(line_text: str, cursor_col: int) -> str | None:
@@ -317,6 +510,10 @@ def _score_suggestion(
             score += 90
         elif suggestion.kind == "variable":
             score += 70
+        elif suggestion.kind == "snippet":
+            score += 65
+        elif suggestion.kind == "module":
+            score += 55
         elif suggestion.kind == "keyword":
             score += 35
 
@@ -366,12 +563,18 @@ def build_autocomplete_suggestions(
         raw = [item for item in catalog if _match_prefix(item.match_text or item.name, match.prefix)]
         return _dedupe_suggestions(raw, match, line_text=request.line_text, document_kind=request.document_kind)
 
+    if match.kind == "member":
+        raw = _stdlib_member_suggestions(match.qualifier, match.prefix)
+        return _dedupe_suggestions(raw, match, line_text=request.line_text, document_kind=request.document_kind)
+
     should_suggest_identifiers = request.document_kind == "script" or _looks_like_code_line(request.line_text)
     raw: list[CommandSuggestion] = []
     if should_suggest_identifiers and request.document_text:
         raw.extend(_document_symbol_suggestions(match.prefix, request.document_text))
     raw.extend(_workspace_suggestions(match.prefix, request.workspace_items))
     if should_suggest_identifiers:
+        raw.extend(_snippet_suggestions(match.prefix))
+        raw.extend(_builtin_suggestions(match.prefix))
         raw.extend(_keyword_suggestions(match.prefix))
     return _dedupe_suggestions(raw, match, line_text=request.line_text, document_kind=request.document_kind)
 

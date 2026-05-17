@@ -18,6 +18,12 @@ from command_catalog import CommandSuggestion
 from console_engine import MathRuntime, capture_to_events
 from diagnostics import diagnostic_line_offset
 from editor_pdf_sync import EditorPdfSyncMap
+from editor.auto_pairs import (
+    closing_for_opening,
+    empty_pair_at,
+    should_skip_closing,
+    smart_enter_in_empty_braces,
+)
 from editor.bracket_matcher import find_bracket_match
 from editor.indent_guides import QtIndentGuideRenderer
 from editor.occurrence_highlighter import find_occurrences
@@ -871,8 +877,12 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
             if cursor.hasSelection():
                 super().keyPressEvent(event)
                 return
+            if self._backspace_empty_pair(cursor):
+                return
             if self._backspace_indentation(cursor):
                 return
+        if self._handle_auto_pair_key(event):
+            return
         super().keyPressEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
@@ -903,10 +913,69 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
             return True
         return False
 
+    def _backspace_empty_pair(self, cursor: QtGui.QTextCursor) -> bool:
+        if empty_pair_at(self.toPlainText(), cursor.position()) is None:
+            return False
+
+        cursor.beginEditBlock()
+        cursor.deletePreviousChar()
+        cursor.deleteChar()
+        cursor.endEditBlock()
+        return True
+
+    def _handle_auto_pair_key(self, event) -> bool:
+        text = event.text()
+        if not text or len(text) != 1:
+            return False
+
+        modifiers = event.modifiers()
+        blocked_modifiers = (
+            QtCore.Qt.KeyboardModifier.ControlModifier
+            | QtCore.Qt.KeyboardModifier.AltModifier
+            | QtCore.Qt.KeyboardModifier.MetaModifier
+        )
+        if modifiers & blocked_modifiers:
+            return False
+
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            return False
+
+        if should_skip_closing(self.toPlainText(), cursor.position(), text):
+            cursor.movePosition(QtGui.QTextCursor.MoveOperation.NextCharacter)
+            self.setTextCursor(cursor)
+            return True
+
+        closing = closing_for_opening(text)
+        if closing is None:
+            return False
+
+        cursor.beginEditBlock()
+        cursor.insertText(f"{text}{closing}")
+        cursor.movePosition(QtGui.QTextCursor.MoveOperation.PreviousCharacter)
+        cursor.endEditBlock()
+        self.setTextCursor(cursor)
+        return True
+
     def _handle_return(self) -> None:
         cursor = self.textCursor()
         block_text = cursor.block().text()
         position_in_block = cursor.positionInBlock()
+        if not cursor.hasSelection():
+            smart_enter = smart_enter_in_empty_braces(
+                block_text,
+                position_in_block,
+                indent_unit=INDENTATION,
+            )
+            if smart_enter is not None:
+                start = cursor.position()
+                cursor.beginEditBlock()
+                cursor.insertText(smart_enter.text)
+                cursor.setPosition(start + smart_enter.cursor_offset)
+                cursor.endEditBlock()
+                self.setTextCursor(cursor)
+                return
+
         leading_spaces = len(block_text) - len(block_text.lstrip(" "))
         current_indent = block_text[:leading_spaces]
         opens_block = self._line_opens_block(block_text)
@@ -1000,7 +1069,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
         if key == QtCore.Qt.Key.Key_Down:
             popup.move_selection(1)
             return True
-        if key in (QtCore.Qt.Key.Key_Return, QtCore.Qt.Key.Key_Enter):
+        if key in (QtCore.Qt.Key.Key_Return, QtCore.Qt.Key.Key_Enter, QtCore.Qt.Key.Key_Tab):
             suggestion = popup.current_suggestion()
             if suggestion is None:
                 return False
@@ -1141,6 +1210,11 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
             if cursor_backtrack:
                 final_position -= cursor_backtrack
             cursor.setPosition(final_position)
+            if suggestion.cursor_selection_length:
+                cursor.setPosition(
+                    final_position + suggestion.cursor_selection_length,
+                    QtGui.QTextCursor.MoveMode.KeepAnchor,
+                )
             cursor.endEditBlock()
             self.setTextCursor(cursor)
         finally:

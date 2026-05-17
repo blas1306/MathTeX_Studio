@@ -206,6 +206,94 @@ class AutocompleteEngineTests(unittest.TestCase):
         self.assertEqual(suggestions[0].name, "function")
         self.assertEqual(suggestions[0].kind, "keyword")
 
+    def test_aether_builtins_are_suggested_by_prefix(self):
+        suggestions = build_autocomplete_suggestions(AutocompleteRequest(line_text="pri", cursor_col=3))
+
+        names = [item.name for item in suggestions]
+        self.assertIn("println", names)
+        self.assertIn("print", names)
+        self.assertNotIn("numel", names)
+
+    def test_for_prefix_includes_for_snippet_above_keyword(self):
+        suggestions = build_autocomplete_suggestions(AutocompleteRequest(line_text="for", cursor_col=3))
+
+        self.assertGreaterEqual(len(suggestions), 1)
+        self.assertEqual(suggestions[0].name, "for")
+        self.assertEqual(suggestions[0].kind, "snippet")
+        self.assertIn("{", suggestions[0].insert_text)
+        self.assertEqual(suggestions[0].cursor_selection_length, 1)
+
+    def test_aether_types_stay_keyword_suggestions(self):
+        suggestions = build_autocomplete_suggestions(AutocompleteRequest(line_text="int", cursor_col=3))
+
+        self.assertEqual(suggestions[0].name, "int")
+        self.assertEqual(suggestions[0].kind, "keyword")
+
+    def test_math_namespace_suggests_real_submodules(self):
+        suggestions = build_autocomplete_suggestions(AutocompleteRequest(line_text="Math.", cursor_col=len("Math.")))
+
+        self.assertEqual([item.name for item in suggestions], ["LinearAlgebra"])
+        self.assertEqual(suggestions[0].kind, "module")
+
+    def test_math_linear_algebra_suggests_real_functions_only(self):
+        suggestions = build_autocomplete_suggestions(
+            AutocompleteRequest(line_text="Math.LinearAlgebra.", cursor_col=len("Math.LinearAlgebra."))
+        )
+
+        names = [item.name for item in suggestions]
+        self.assertIn("transpose", names)
+        self.assertIn("matmul", names)
+        self.assertIn("inner", names)
+        self.assertIn("norm", names)
+        self.assertNotIn("det", names)
+        self.assertNotIn("inv", names)
+        self.assertNotIn("solve", names)
+
+    def test_aether_variables_are_suggested_by_prefix(self):
+        suggestions = build_autocomplete_suggestions(
+            AutocompleteRequest(
+                line_text="su",
+                cursor_col=2,
+                document_text="suma = 0;\nvectorDatos = [1, 2, 3];\nsu",
+            )
+        )
+
+        self.assertEqual(suggestions[0].name, "suma")
+        self.assertEqual(suggestions[0].source, "document")
+
+    def test_aether_typed_functions_are_suggested_by_prefix(self):
+        suggestions = build_autocomplete_suggestions(
+            AutocompleteRequest(
+                line_text="do",
+                cursor_col=2,
+                document_text="int doble(int x) { return 2 * x; }\ndo",
+            )
+        )
+
+        self.assertEqual(suggestions[0].name, "doble")
+        self.assertEqual(suggestions[0].kind, "function")
+        self.assertEqual(suggestions[0].signature, "doble(x)")
+
+    def test_does_not_suggest_inside_strings(self):
+        suggestions = build_autocomplete_suggestions(
+            AutocompleteRequest(
+                line_text='"pri',
+                cursor_col=len('"pri'),
+            )
+        )
+
+        self.assertEqual(suggestions, [])
+
+    def test_does_not_suggest_inside_slash_comments(self):
+        suggestions = build_autocomplete_suggestions(
+            AutocompleteRequest(
+                line_text="// pri",
+                cursor_col=len("// pri"),
+            )
+        )
+
+        self.assertEqual(suggestions, [])
+
     def test_mtex_document_context_avoids_keyword_noise_on_plain_text_lines(self):
         suggestions = build_autocomplete_suggestions(
             AutocompleteRequest(

@@ -159,12 +159,12 @@ def test_editor_ignores_document_symbols_defined_after_the_cursor(editor: CodeEd
 
 
 def test_enter_on_keyword_autocomplete_expands_block_immediately(editor: CodeEditor, qapp) -> None:
-    editor.setPlainText("fo")
+    editor.setPlainText("for")
     qapp.processEvents()
     editor._hide_autocomplete()
 
     cursor = editor.textCursor()
-    cursor.setPosition(len("fo"))
+    cursor.setPosition(len("for"))
     editor.setTextCursor(cursor)
     qapp.processEvents()
     editor._refresh_autocomplete(trigger="text")
@@ -174,14 +174,16 @@ def test_enter_on_keyword_autocomplete_expands_block_immediately(editor: CodeEdi
     current = editor._autocomplete_popup.current_suggestion()
     assert current is not None
     assert current.name == "for"
+    assert current.kind == "snippet"
 
     editor._accept_autocomplete_and_maybe_expand_block(current)
     qapp.processEvents()
 
-    assert editor.toPlainText() == "for \n    \nend"
+    assert editor.toPlainText() == "for x in iterable {\n    \n}"
     cursor = editor.textCursor()
-    assert cursor.blockNumber() == 1
-    assert cursor.positionInBlock() == 4
+    assert cursor.blockNumber() == 0
+    assert cursor.selectionStart() == len("for ")
+    assert cursor.selectionEnd() == len("for x")
 
 
 def test_enter_before_existing_for_line_does_not_expand_block(editor: CodeEditor, qapp) -> None:

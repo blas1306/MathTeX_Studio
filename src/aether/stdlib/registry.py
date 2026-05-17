@@ -41,6 +41,10 @@ def is_builtin(name: str) -> bool:
     return name in _definitions()
 
 
+def builtin_names() -> tuple[str, ...]:
+    return tuple(sorted(_definitions()))
+
+
 def call_builtin(name: str, args: list[AetherValue], write_output: OutputWriter) -> AetherValue:
     builtin = get_builtin(name, write_output)
     if builtin is None:
