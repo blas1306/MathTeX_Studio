@@ -83,13 +83,51 @@ class MatrixType:
         return hash((self.element_type, self.rows, self.cols, self.vector))
 
 
-AetherType = str | ArrayType | MatrixType
+@dataclass(frozen=True, eq=False)
+class RangeType:
+    element_type: str = "int"
+
+    def __post_init__(self) -> None:
+        if self.element_type != "int":
+            raise AetherTypeError("Ranges only support int elements in Aether v0.")
+
+    def __str__(self) -> str:
+        return f"Range<{self.element_type}>"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, RangeType) and self.element_type == other.element_type
+
+    def __hash__(self) -> int:
+        return hash(("Range", self.element_type))
+
+
+AetherType = str | ArrayType | MatrixType | RangeType
 
 
 @dataclass(frozen=True)
 class AetherValue:
     type_name: AetherType
     value: Any
+
+
+@dataclass(frozen=True)
+class AetherRange:
+    start: int
+    step: int
+    end: int
+
+    def __iter__(self):
+        if self.step == 0:
+            raise AetherTypeError("Range step cannot be zero.")
+        current = self.start
+        if self.step > 0:
+            while current <= self.end:
+                yield AetherValue("int", current)
+                current += self.step
+            return
+        while current >= self.end:
+            yield AetherValue("int", current)
+            current += self.step
 
 
 def default_text(value: AetherValue) -> str:
@@ -119,6 +157,8 @@ def is_known_type(type_name: AetherType) -> bool:
         return is_known_type(type_name.element_type)
     if isinstance(type_name, MatrixType):
         return type_name.element_type in TYPE_NAMES
+    if isinstance(type_name, RangeType):
+        return type_name.element_type == "int"
     return type_name in TYPE_NAMES
 
 
@@ -128,6 +168,10 @@ def is_array_type(type_name: AetherType) -> bool:
 
 def is_matrix_type(type_name: AetherType) -> bool:
     return isinstance(type_name, MatrixType)
+
+
+def is_range_type(type_name: AetherType) -> bool:
+    return isinstance(type_name, RangeType)
 
 
 def is_indexable_type(type_name: AetherType) -> bool:
@@ -147,6 +191,8 @@ def matrix_row_type(type_name: AetherType) -> ArrayType:
 
 
 def can_implicitly_convert(from_type: AetherType, to_type: AetherType) -> bool:
+    if isinstance(from_type, RangeType) or isinstance(to_type, RangeType):
+        return from_type == to_type
     if isinstance(from_type, MatrixType) or isinstance(to_type, MatrixType):
         if not isinstance(from_type, MatrixType) or not isinstance(to_type, MatrixType):
             return False

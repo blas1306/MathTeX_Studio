@@ -10,6 +10,7 @@ from .types import (
     ArrayType,
     MatrixType,
     NUMERIC_TYPES,
+    RangeType,
     array_element_type,
     can_implicitly_convert,
     is_array_type,
@@ -29,6 +30,7 @@ class TypeChecker:
         self.global_scope: Scope[VariableSymbol] = Scope()
         self.functions: dict[str, FunctionSymbol] = {}
         self.current_return_type: AetherType | None = None
+        self.loop_variable_stack: list[tuple[str, Scope[VariableSymbol]]] = []
 
     def check(self, program: ast.Program) -> None:
         self._check_statements(program.statements, self.global_scope)
@@ -59,6 +61,9 @@ class TypeChecker:
         if isinstance(statement, ast.WhileStatement):
             self._require_condition_type(statement.condition, scope, "while")
             self._check_statements(statement.body, Scope(parent=scope))
+            return
+        if isinstance(statement, ast.ForInStatement):
+            self._check_for_in(statement, scope)
             return
         if isinstance(statement, ast.FunctionDeclaration):
             self._declare_function(statement)
@@ -102,6 +107,8 @@ class TypeChecker:
         )
 
     def _assign_variable(self, statement: ast.Assignment, scope: Scope[VariableSymbol]) -> None:
+        if self._is_active_loop_variable_assignment(statement.name, scope):
+            raise AetherTypeError(f"Cannot assign to loop variable '{statement.name}' inside its own for-loop.")
         existing = scope.lookup(statement.name)
         if (
             (
@@ -132,6 +139,9 @@ class TypeChecker:
             self._raise_implicit_conversion_error(value_type, existing.type_name)
 
     def _assign_index(self, statement: ast.IndexAssignment, scope: Scope[VariableSymbol]) -> None:
+        assigned_name = _assignment_root_name(statement.array)
+        if assigned_name is not None and self._is_active_loop_variable_assignment(assigned_name, scope):
+            raise AetherTypeError(f"Cannot assign to loop variable '{assigned_name}' inside its own for-loop.")
         array_type = self._expression_type(statement.array, scope)
         index_type = self._expression_type(statement.index, scope)
         value_type = self._expression_type(statement.expression, scope)
@@ -146,6 +156,29 @@ class TypeChecker:
             raise AetherTypeError("Assigning a whole matrix row is not supported yet.")
         if not can_implicitly_convert(value_type, element_type):
             self._raise_implicit_conversion_error(value_type, element_type)
+
+    def _check_for_in(self, statement: ast.ForInStatement, scope: Scope[VariableSymbol]) -> None:
+        iterable_type = self._expression_type(statement.iterable, scope)
+        if iterable_type is UNKNOWN_TYPE:
+            return
+        element_type = _iterable_element_type(iterable_type)
+        if element_type is None:
+            raise AetherTypeError(f"Cannot iterate over value of type '{type_to_string(iterable_type)}'.")
+        loop_scope: Scope[VariableSymbol] = Scope(parent=scope)
+        loop_scope.define_local(
+            statement.variable,
+            VariableSymbol(statement.variable, element_type),
+            forbid_shadowing=True,
+        )
+        self.loop_variable_stack.append((statement.variable, loop_scope))
+        try:
+            self._check_statements(statement.body, loop_scope)
+        finally:
+            self.loop_variable_stack.pop()
+
+    def _is_active_loop_variable_assignment(self, name: str, scope: Scope[VariableSymbol]) -> bool:
+        target_scope = scope.resolve_scope(name)
+        return any(loop_name == name and loop_scope is target_scope for loop_name, loop_scope in self.loop_variable_stack)
 
     def _declare_function(self, statement: ast.FunctionDeclaration) -> None:
         if statement.name in self.functions:
@@ -197,6 +230,8 @@ class TypeChecker:
             raise AetherRuntimeError(f"Unsupported unary operator '{expression.operator}'.")
         if isinstance(expression, ast.BinaryExpression):
             return self._binary_type(expression, scope)
+        if isinstance(expression, ast.RangeExpression):
+            return self._range_type(expression, scope)
         if isinstance(expression, ast.CallExpression):
             return self._call_type(expression, scope)
         if isinstance(expression, ast.ArrayLiteral):
@@ -213,6 +248,10 @@ class TypeChecker:
         if left_type is UNKNOWN_TYPE or right_type is UNKNOWN_TYPE:
             return UNKNOWN_TYPE
         operator = expression.operator
+        if operator in {"&&", "||"}:
+            if left_type != "boolean" or right_type != "boolean":
+                raise AetherTypeError(f"Operator '{operator}' requires boolean operands.")
+            return "boolean"
         if operator in {"+", "-", "*", "/", "^"}:
             if operator == "+" and left_type == "string" and right_type == "string":
                 return "string"
@@ -241,6 +280,20 @@ class TypeChecker:
                 raise AetherTypeError(f"Operator '{operator}' requires numeric operands.")
             return "boolean"
         raise AetherRuntimeError(f"Unsupported binary operator '{operator}'.")
+
+    def _range_type(self, expression: ast.RangeExpression, scope: Scope[VariableSymbol]) -> AetherType | None:
+        operand_types = [
+            self._expression_type(expression.start, scope),
+            self._expression_type(expression.end, scope),
+        ]
+        if expression.step is not None:
+            operand_types.append(self._expression_type(expression.step, scope))
+        if any(operand_type is UNKNOWN_TYPE for operand_type in operand_types):
+            return UNKNOWN_TYPE
+        for operand_type in operand_types:
+            if operand_type != "int":
+                raise AetherTypeError(f"Range bounds and step must be int, got '{type_to_string(operand_type)}'.")
+        return RangeType("int")
 
     def _array_literal_type(self, expression: ast.ArrayLiteral, scope: Scope[VariableSymbol]) -> AetherType | None:
         if not expression.elements:
@@ -377,6 +430,32 @@ class TypeChecker:
                 return False
             return self._statements_always_return(statement.body) and self._statements_always_return(statement.else_body)
         return False
+
+
+def _iterable_element_type(type_name: AetherType) -> AetherType | None:
+    if isinstance(type_name, RangeType):
+        return type_name.element_type
+    if isinstance(type_name, ArrayType):
+        return type_name.element_type
+    if isinstance(type_name, MatrixType) and _is_vector_like_matrix_type(type_name):
+        return type_name.element_type
+    return None
+
+
+def _is_vector_like_matrix_type(type_name: MatrixType) -> bool:
+    if type_name.vector:
+        return True
+    if type_name.rows is None or type_name.cols is None:
+        return False
+    return type_name.rows == 1 or type_name.cols == 1
+
+
+def _assignment_root_name(expression: ast.Expression) -> str | None:
+    if isinstance(expression, ast.Identifier):
+        return expression.name
+    if isinstance(expression, ast.IndexExpression):
+        return _assignment_root_name(expression.array)
+    return None
 
 
 def _common_array_element_type(element_types: list[AetherType | None]) -> AetherType:

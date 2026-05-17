@@ -8,10 +8,12 @@ from .scope import Scope
 from .stdlib import BuiltinFunction, make_builtins
 from .types import (
     AetherType,
+    AetherRange,
     AetherValue,
     ArrayType,
     MatrixType,
     NUMERIC_TYPES,
+    RangeType,
     array_element_type,
     coerce_array_literal_value,
     coerce_implicit,
@@ -176,6 +178,13 @@ class Interpreter:
                     break
                 self._execute_block(statement.body, Environment(parent=env))
             return
+        if isinstance(statement, ast.ForInStatement):
+            iterable = self._evaluate(statement.iterable, env)
+            for item in _iterable_values(iterable):
+                loop_env = Environment(parent=env)
+                loop_env.define(statement.variable, item, forbid_shadowing=True)
+                self._execute_block(statement.body, loop_env)
+            return
         if isinstance(statement, ast.FunctionDeclaration):
             env.define_function(Function(statement))
             return
@@ -200,9 +209,13 @@ class Interpreter:
                 return AetherValue(operand.type_name, -operand.value)
             raise AetherRuntimeError(f"Unsupported unary operator '{expression.operator}'.")
         if isinstance(expression, ast.BinaryExpression):
+            if expression.operator in {"&&", "||"}:
+                return self._evaluate_logical(expression, env)
             left = self._evaluate(expression.left, env)
             right = self._evaluate(expression.right, env)
             return self._evaluate_binary(left, expression.operator, right)
+        if isinstance(expression, ast.RangeExpression):
+            return self._evaluate_range(expression, env)
         if isinstance(expression, ast.CallExpression):
             args = [self._evaluate(arg, env) for arg in expression.arguments]
             return self._call(expression.callee, args, env)
@@ -213,6 +226,15 @@ class Interpreter:
         if isinstance(expression, ast.IndexExpression):
             return self._read_index(expression.array, expression.index, env)
         raise AetherRuntimeError(f"Unsupported expression {expression!r}.")
+
+    def _evaluate_range(self, expression: ast.RangeExpression, env: Environment) -> AetherValue:
+        start = self._evaluate(expression.start, env)
+        end = self._evaluate(expression.end, env)
+        step = self._evaluate(expression.step, env) if expression.step is not None else AetherValue("int", 1)
+        for label, value in (("start", start), ("end", end), ("step", step)):
+            if value.type_name != "int":
+                raise AetherTypeError(f"Range {label} must be int, got '{type_to_string(value.type_name)}'.")
+        return AetherValue(RangeType("int"), AetherRange(start.value, step.value, end.value))
 
     def _evaluate_array_literal(
         self,
@@ -324,6 +346,21 @@ class Interpreter:
             return AetherValue("boolean", _compare_values(left.value, operator, right.value))
         raise AetherRuntimeError(f"Unsupported binary operator '{operator}'.")
 
+    def _evaluate_logical(self, expression: ast.BinaryExpression, env: Environment) -> AetherValue:
+        left = self._evaluate(expression.left, env)
+        self._require_boolean(left, f"operator '{expression.operator}'")
+        if expression.operator == "&&" and not left.value:
+            return AetherValue("boolean", False)
+        if expression.operator == "||" and left.value:
+            return AetherValue("boolean", True)
+        right = self._evaluate(expression.right, env)
+        self._require_boolean(right, f"operator '{expression.operator}'")
+        if expression.operator == "&&":
+            return AetherValue("boolean", right.value)
+        if expression.operator == "||":
+            return AetherValue("boolean", right.value)
+        raise AetherRuntimeError(f"Unsupported logical operator '{expression.operator}'.")
+
     def _numeric_or_string_binary(self, left: AetherValue, operator: str, right: AetherValue) -> AetherValue:
         if operator == "+" and left.type_name == "string" and right.type_name == "string":
             return AetherValue("string", left.value + right.value)
@@ -368,6 +405,37 @@ class Interpreter:
     def _require_boolean(self, value: AetherValue, construct: str) -> None:
         if value.type_name != "boolean":
             raise AetherTypeError(f"The condition of '{construct}' must be boolean, got '{value.type_name}'.")
+
+
+def _iterable_values(value: AetherValue) -> list[AetherValue] | AetherRange:
+    if isinstance(value.type_name, RangeType):
+        if not isinstance(value.value, AetherRange):
+            raise AetherRuntimeError("Invalid range value.")
+        return value.value
+    if isinstance(value.type_name, ArrayType):
+        return list(value.value)
+    if isinstance(value.type_name, MatrixType) and _is_vector_like_matrix(value):
+        return _vector_elements(value)
+    raise AetherTypeError(f"Cannot iterate over value of type '{type_to_string(value.type_name)}'.")
+
+
+def _is_vector_like_matrix(value: AetherValue) -> bool:
+    if not isinstance(value.type_name, MatrixType):
+        return False
+    rows = len(value.value)
+    cols = len(value.value[0].value) if value.value else 0
+    return value.type_name.vector or rows == 1 or cols == 1
+
+
+def _vector_elements(value: AetherValue) -> list[AetherValue]:
+    rows = value.value
+    if not rows:
+        return []
+    if len(rows) == 1:
+        return list(rows[0].value)
+    if len(rows[0].value) == 1:
+        return [row.value[0] for row in rows]
+    raise AetherTypeError(f"Cannot iterate over value of type '{type_to_string(value.type_name)}'.")
 
 
 def _array_type_from_values(elements: list[AetherValue]) -> ArrayType:

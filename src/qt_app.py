@@ -18,6 +18,8 @@ from command_catalog import CommandSuggestion
 from console_engine import MathRuntime, capture_to_events
 from diagnostics import diagnostic_line_offset
 from editor_pdf_sync import EditorPdfSyncMap
+from editor.bracket_matcher import find_bracket_match
+from editor.occurrence_highlighter import find_occurrences
 from latex_lang import (
     env_ast,
     register_plot_listener,
@@ -51,6 +53,13 @@ except Exception as exc:  # pragma: no cover - no hay Qt disponible
     raise ImportError("PySide6 no esta disponible") from exc
 
 EDITOR_KEYWORDS = (
+    "int",
+    "float",
+    "double",
+    "string",
+    "boolean",
+    "Matrix",
+    "Vector",
     "for",
     "if",
     "elif",
@@ -83,6 +92,11 @@ STRING_COLOR = "#c586c0"
 NUMBER_COLOR = "#45b39d"
 PUNCT_COLOR = "#f7dc6f"
 SELECT_BG = "rgba(255, 159, 59, 110)"  # tono calido con algo de transparencia
+EDITOR_MATCH_BG = "#6b7a3f"
+BRACKET_MATCH_BG = EDITOR_MATCH_BG
+BRACKET_ERROR_BG = "#a65353"
+BRACKET_MATCH_FG = "#ffffff"
+OCCURRENCE_MATCH_BG = EDITOR_MATCH_BG
 MATHLAB_EDITOR_BG = "#1e1e1e"
 MATHLAB_PANEL_BG = "#252526"
 MATHLAB_TOOLBAR_BG = "#2d2d2d"
@@ -653,6 +667,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
         self._current_line_bg = "#404040"
         self.setTabChangesFocus(False)
         self.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
+        self.setCursorWidth(2)
         self.setFont(QtGui.QFont("Consolas", 11))
         self._apply_surface_palette()
         self.setStyleSheet(
@@ -667,7 +682,8 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
         self.line_number_area = LineNumberArea(self)
         self.blockCountChanged.connect(self.update_line_number_area_width)
         self.updateRequest.connect(self.update_line_number_area)
-        self.cursorPositionChanged.connect(self.highlight_current_line)
+        self.cursorPositionChanged.connect(self.update_extra_selections)
+        self.textChanged.connect(self.update_extra_selections)
         if self._autocomplete_enabled:
             self.textChanged.connect(self._on_text_autocomplete_trigger)
             self.cursorPositionChanged.connect(self._on_cursor_autocomplete_trigger)
@@ -675,7 +691,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
             self.verticalScrollBar().valueChanged.connect(lambda _value: self._reposition_autocomplete())
             self.horizontalScrollBar().valueChanged.connect(lambda _value: self._reposition_autocomplete())
         self.update_line_number_area_width(0)
-        self.highlight_current_line()
+        self.update_extra_selections()
 
     def _apply_surface_palette(self) -> None:
         palette = self.palette()
@@ -695,7 +711,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
         self._current_line_bg = current_line_color
         self._apply_surface_palette()
         self.line_number_area.update()
-        self.highlight_current_line()
+        self.update_extra_selections()
         self.viewport().update()
 
     def line_number_area_width(self) -> int:
@@ -745,8 +761,17 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
             block_number += 1
 
     def highlight_current_line(self) -> None:
+        self.update_extra_selections()
+
+    def update_extra_selections(self) -> None:
         if self.isReadOnly():
             return
+        selections = [self._current_line_selection()]
+        selections.extend(self._occurrence_selections())
+        selections.extend(self._bracket_match_selections())
+        self.setExtraSelections(selections)
+
+    def _current_line_selection(self):
         selection = QtWidgets.QTextEdit.ExtraSelection()
         line_color = QtGui.QColor(self._current_line_bg)
         line_color.setAlpha(80)
@@ -754,7 +779,50 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
         selection.format.setProperty(QtGui.QTextFormat.Property.FullWidthSelection, True)  # type: ignore[attr-defined]
         selection.cursor = self.textCursor()  # type: ignore[attr-defined]
         selection.cursor.clearSelection()  # type: ignore[attr-defined]
-        self.setExtraSelections([selection])
+        return selection
+
+    def _bracket_match_selections(self) -> list:
+        match = find_bracket_match(self.toPlainText(), self.textCursor().position())
+        if match is None:
+            return []
+
+        color = BRACKET_MATCH_BG if match.is_valid else BRACKET_ERROR_BG
+        positions = [match.anchor_pos]
+        if match.match_pos is not None:
+            positions.append(match.match_pos)
+        return [self._single_character_selection(pos, color) for pos in positions]
+
+    def _occurrence_selections(self) -> list:
+        occurrences = find_occurrences(self.toPlainText(), self.textCursor().position())
+        return [
+            self._range_selection(occurrence.start, occurrence.end, OCCURRENCE_MATCH_BG, alpha=70)
+            for occurrence in occurrences
+        ]
+
+    def _single_character_selection(self, pos: int, background: str):
+        return self._range_selection(pos, pos + 1, background, foreground=BRACKET_MATCH_FG)
+
+    def _range_selection(
+        self,
+        start: int,
+        end: int,
+        background: str,
+        *,
+        foreground: str | None = None,
+        alpha: int | None = None,
+    ):
+        selection = QtWidgets.QTextEdit.ExtraSelection()
+        color = QtGui.QColor(background)
+        if alpha is not None:
+            color.setAlpha(alpha)
+        selection.format.setBackground(color)  # type: ignore[attr-defined]
+        if foreground is not None:
+            selection.format.setForeground(QtGui.QColor(foreground))  # type: ignore[attr-defined]
+        cursor = self.textCursor()
+        cursor.setPosition(start)
+        cursor.setPosition(end, QtGui.QTextCursor.MoveMode.KeepAnchor)
+        selection.cursor = cursor  # type: ignore[attr-defined]
+        return selection
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         key = event.key()

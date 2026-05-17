@@ -64,6 +64,13 @@ class WhileStatement:
 
 
 @dataclass(frozen=True)
+class ForInStatement:
+    variable: str
+    iterable: Expression
+    body: list[Statement]
+
+
+@dataclass(frozen=True)
 class FunctionDeclaration:
     return_type: AetherType
     name: str
@@ -98,6 +105,13 @@ class BinaryExpression:
     left: Expression
     operator: str
     right: Expression
+
+
+@dataclass(frozen=True)
+class RangeExpression:
+    start: Expression
+    end: Expression
+    step: Expression | None = None
 
 
 @dataclass(frozen=True)

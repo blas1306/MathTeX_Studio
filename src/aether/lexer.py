@@ -49,12 +49,15 @@ class Lexer:
             ",": TokenType.COMMA,
             ";": TokenType.SEMICOLON,
             ".": TokenType.DOT,
-            "+": TokenType.PLUS,
+            ":": TokenType.COLON,
             "-": TokenType.MINUS,
             "*": TokenType.STAR,
             "/": TokenType.SLASH,
             "^": TokenType.CARET,
         }
+        if char == "+":
+            self._add_token(TokenType.PLUS_EQUAL if self._match("=") else TokenType.PLUS)
+            return
         if char in single_char_tokens:
             self._add_token(single_char_tokens[char])
             return
@@ -66,6 +69,16 @@ class Lexer:
                 self._add_token(TokenType.BANG_EQUAL)
                 return
             raise self._syntax_error("Unexpected character '!'. Did you mean '!='?")
+        if char == "&":
+            if self._match("&"):
+                self._add_token(TokenType.AMP_AMP)
+                return
+            raise self._syntax_error("Unexpected character '&'. Did you mean '&&'?")
+        if char == "|":
+            if self._match("|"):
+                self._add_token(TokenType.PIPE_PIPE)
+                return
+            raise self._syntax_error("Unexpected character '|'. Did you mean '||'?")
         if char == "<":
             self._add_token(TokenType.LESS_EQUAL if self._match("=") else TokenType.LESS)
             return

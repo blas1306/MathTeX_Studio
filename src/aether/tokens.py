@@ -17,14 +17,20 @@ class TokenType(str, Enum):
     IF = "IF"
     ELSE = "ELSE"
     WHILE = "WHILE"
+    FOR = "FOR"
+    IN = "IN"
     PLUS = "+"
+    PLUS_EQUAL = "+="
     MINUS = "-"
     STAR = "*"
     SLASH = "/"
     CARET = "^"
+    COLON = ":"
     EQUAL = "="
     EQUAL_EQUAL = "=="
     BANG_EQUAL = "!="
+    AMP_AMP = "&&"
+    PIPE_PIPE = "||"
     LESS = "<"
     LESS_EQUAL = "<="
     GREATER = ">"
@@ -49,6 +55,8 @@ KEYWORDS: dict[str, TokenType] = {
     "if": TokenType.IF,
     "else": TokenType.ELSE,
     "while": TokenType.WHILE,
+    "for": TokenType.FOR,
+    "in": TokenType.IN,
     "true": TokenType.BOOLEAN_LITERAL,
     "false": TokenType.BOOLEAN_LITERAL,
     **{type_name: TokenType.TYPE for type_name in AETHER_TYPES},

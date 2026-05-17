@@ -48,6 +48,11 @@ class Parser:
             return ast.IfStatement(condition, body, else_body)
         if self._match(TokenType.WHILE):
             return ast.WhileStatement(self._expression(), self._block())
+        if self._match(TokenType.FOR):
+            variable = self._consume(TokenType.IDENTIFIER, "Expected loop variable after 'for'.").lexeme
+            self._consume(TokenType.IN, "Expected 'in' after loop variable.")
+            iterable = self._expression()
+            return ast.ForInStatement(variable, iterable, self._block())
         if self._match(TokenType.RETURN):
             expression = self._expression()
             self._consume(TokenType.SEMICOLON, "Expected ';' after return value.")
@@ -62,6 +67,12 @@ class Parser:
                 return ast.Assignment(expression.name, value)
             if isinstance(expression, ast.IndexExpression):
                 return ast.IndexAssignment(expression.array, expression.index, value)
+            raise self._error(self._previous(), "Invalid assignment target.")
+        if self._match(TokenType.PLUS_EQUAL):
+            value = self._expression()
+            self._consume(TokenType.SEMICOLON, "Expected ';' after assignment.")
+            if isinstance(expression, ast.Identifier):
+                return ast.Assignment(expression.name, ast.BinaryExpression(expression, "+", value))
             raise self._error(self._previous(), "Invalid assignment target.")
         self._consume(TokenType.SEMICOLON, "Expected ';' after expression.")
         return ast.ExpressionStatement(expression)
@@ -83,7 +94,33 @@ class Parser:
         return statements
 
     def _expression(self) -> ast.Expression:
-        return self._equality()
+        return self._range()
+
+    def _range(self) -> ast.Expression:
+        expr = self._logical_or()
+        if not self._match(TokenType.COLON):
+            return expr
+        second = self._logical_or()
+        if self._match(TokenType.COLON):
+            end = self._logical_or()
+            return ast.RangeExpression(expr, end, second)
+        return ast.RangeExpression(expr, second)
+
+    def _logical_or(self) -> ast.Expression:
+        expr = self._logical_and()
+        while self._match(TokenType.PIPE_PIPE):
+            operator = self._previous().lexeme
+            right = self._logical_and()
+            expr = ast.BinaryExpression(expr, operator, right)
+        return expr
+
+    def _logical_and(self) -> ast.Expression:
+        expr = self._equality()
+        while self._match(TokenType.AMP_AMP):
+            operator = self._previous().lexeme
+            right = self._equality()
+            expr = ast.BinaryExpression(expr, operator, right)
+        return expr
 
     def _equality(self) -> ast.Expression:
         expr = self._comparison()

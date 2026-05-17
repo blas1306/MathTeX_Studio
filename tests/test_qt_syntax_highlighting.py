@@ -35,6 +35,28 @@ def test_script_keywords_are_highlighted_but_not_inside_comments(qapp) -> None:
     editor.close()
 
 
+def test_aether_types_are_highlighted_like_keywords(qapp) -> None:
+    editor = CodeEditor()
+    editor.set_autocomplete_document_kind("script")
+    editor.setPlainText("int i = 0;\ndouble x = 1.0;\nMatrix<double> A = [];\n")
+    qapp.processEvents()
+
+    assert _has_color_at(editor, 0, 0, 3, "#a30101")
+    assert _has_color_at(editor, 1, 0, 6, "#a30101")
+    assert _has_color_at(editor, 2, 0, 6, "#a30101")
+    assert _has_color_at(editor, 2, 7, 6, "#a30101")
+
+    editor.close()
+
+
+def test_editor_cursor_is_wider_for_visibility(qapp) -> None:
+    editor = CodeEditor()
+
+    assert editor.cursorWidth() == 2
+
+    editor.close()
+
+
 def test_mtex_keywords_are_highlighted_only_inside_code_blocks(qapp) -> None:
     editor = CodeEditor()
     editor.set_autocomplete_document_kind("mtex_document")
