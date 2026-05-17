@@ -19,6 +19,7 @@ from console_engine import MathRuntime, capture_to_events
 from diagnostics import diagnostic_line_offset
 from editor_pdf_sync import EditorPdfSyncMap
 from editor.bracket_matcher import find_bracket_match
+from editor.indent_guides import QtIndentGuideRenderer
 from editor.occurrence_highlighter import find_occurrences
 from latex_lang import (
     env_ast,
@@ -669,6 +670,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
         self.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
         self.setCursorWidth(2)
         self.setFont(QtGui.QFont("Consolas", 11))
+        self._configure_tab_stops()
         self._apply_surface_palette()
         self.setStyleSheet(
             f"""
@@ -679,11 +681,14 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
         """
         )
         self.highlighter = MathSyntaxHighlighter(self.document())
+        self._indent_guide_renderer = QtIndentGuideRenderer(self, indent_width=len(INDENTATION))
         self.line_number_area = LineNumberArea(self)
         self.blockCountChanged.connect(self.update_line_number_area_width)
         self.updateRequest.connect(self.update_line_number_area)
         self.cursorPositionChanged.connect(self.update_extra_selections)
         self.textChanged.connect(self.update_extra_selections)
+        self.cursorPositionChanged.connect(self._update_indent_guides)
+        self.textChanged.connect(self._update_indent_guides)
         if self._autocomplete_enabled:
             self.textChanged.connect(self._on_text_autocomplete_trigger)
             self.cursorPositionChanged.connect(self._on_cursor_autocomplete_trigger)
@@ -692,6 +697,9 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
             self.horizontalScrollBar().valueChanged.connect(lambda _value: self._reposition_autocomplete())
         self.update_line_number_area_width(0)
         self.update_extra_selections()
+
+    def _configure_tab_stops(self) -> None:
+        self.setTabStopDistance(self.fontMetrics().horizontalAdvance(" ") * len(INDENTATION))
 
     def _apply_surface_palette(self) -> None:
         palette = self.palette()
@@ -712,6 +720,9 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
         self._apply_surface_palette()
         self.line_number_area.update()
         self.update_extra_selections()
+        self.viewport().update()
+
+    def _update_indent_guides(self) -> None:
         self.viewport().update()
 
     def line_number_area_width(self) -> int:
@@ -735,6 +746,10 @@ class CodeEditor(QtWidgets.QPlainTextEdit):  # type: ignore[misc]
         cr = self.contentsRect()
         self.line_number_area.setGeometry(QtCore.QRect(cr.left(), cr.top(), self.line_number_area_width(), cr.height()))
         self._reposition_autocomplete()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        super().paintEvent(event)
+        self._indent_guide_renderer.paint(event)
 
     def line_number_area_paint_event(self, event) -> None:
         painter = QtGui.QPainter(self.line_number_area)
