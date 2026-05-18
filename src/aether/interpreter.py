@@ -321,7 +321,7 @@ class Interpreter:
         declaration = function.declaration
         if len(args) != len(declaration.parameters):
             raise AetherRuntimeError(
-                f"Function '{callee}' expects {len(declaration.parameters)} argument(s), got {len(args)}."
+                f"Function '{callee}' expects {len(declaration.parameters)} arguments but got {len(args)}."
             )
         if isinstance(declaration, ast.ExpressionFunctionDeclaration):
             local_env = Environment(parent=self.global_env)

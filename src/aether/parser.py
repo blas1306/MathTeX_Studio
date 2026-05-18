@@ -10,6 +10,7 @@ class Parser:
     def __init__(self, tokens: list[Token]) -> None:
         self.tokens = tokens
         self.current = 0
+        self.expression_function_name: str | None = None
 
     def parse(self) -> ast.Program:
         statements: list[ast.Statement] = []
@@ -46,16 +47,40 @@ class Parser:
         name = self._consume(TokenType.IDENTIFIER, "Expected function name.").lexeme
         self._consume(TokenType.LEFT_PAREN, "Expected '(' after function name.")
         parameters: list[ast.ExpressionParameter] = []
+        parameter_names: set[str] = set()
         if not self._check(TokenType.RIGHT_PAREN):
             while True:
-                param_name = self._consume(TokenType.IDENTIFIER, "Expected parameter name.").lexeme
+                if not self._check(TokenType.IDENTIFIER):
+                    token = self._peek()
+                    if token.type == TokenType.EOF:
+                        raise self._error(token, f"Expected parameter name in expression function '{name}'.")
+                    raise self._error(token, f"Invalid parameter name '{token.lexeme}' in expression function '{name}'.")
+                param_name = self._advance().lexeme
+                if param_name in parameter_names:
+                    raise self._error(
+                        self._previous(),
+                        f"Duplicate parameter '{param_name}' in expression function '{name}'.",
+                    )
+                parameter_names.add(param_name)
                 parameters.append(ast.ExpressionParameter(param_name))
                 if not self._match(TokenType.COMMA):
+                    if not self._check(TokenType.RIGHT_PAREN):
+                        raise self._error(
+                            self._peek(),
+                            f"Expected ',' or ')' in parameter list for expression function '{name}'.",
+                        )
                     break
         self._consume(TokenType.RIGHT_PAREN, "Expected ')' after parameters.")
         self._consume(TokenType.EQUAL, "Expected '=' before expression function body.")
-        expression = self._expression()
-        self._consume(TokenType.SEMICOLON, "Expected ';' after expression function.")
+        if not self._can_start_expression(self._peek()):
+            raise self._error(self._peek(), f"Expected expression after '=' in expression function '{name}'.")
+        previous_expression_function_name = self.expression_function_name
+        self.expression_function_name = name
+        try:
+            expression = self._expression()
+        finally:
+            self.expression_function_name = previous_expression_function_name
+        self._consume(TokenType.SEMICOLON, "Expected ';' after expression function declaration.")
         return ast.ExpressionFunctionDeclaration(name, parameters, expression)
 
     def _statement(self) -> ast.Statement:
@@ -118,8 +143,10 @@ class Parser:
         expr = self._logical_or()
         if not self._match(TokenType.COLON):
             return expr
+        self._require_expression_after_operator(self._previous())
         second = self._logical_or()
         if self._match(TokenType.COLON):
+            self._require_expression_after_operator(self._previous())
             end = self._logical_or()
             return ast.RangeExpression(expr, end, second)
         return ast.RangeExpression(expr, second)
@@ -128,6 +155,7 @@ class Parser:
         expr = self._logical_and()
         while self._match(TokenType.PIPE_PIPE):
             operator = self._previous().lexeme
+            self._require_expression_after_operator(self._previous())
             right = self._logical_and()
             expr = ast.BinaryExpression(expr, operator, right)
         return expr
@@ -136,6 +164,7 @@ class Parser:
         expr = self._equality()
         while self._match(TokenType.AMP_AMP):
             operator = self._previous().lexeme
+            self._require_expression_after_operator(self._previous())
             right = self._equality()
             expr = ast.BinaryExpression(expr, operator, right)
         return expr
@@ -144,6 +173,7 @@ class Parser:
         expr = self._comparison()
         while self._match(TokenType.EQUAL_EQUAL, TokenType.BANG_EQUAL):
             operator = self._previous().lexeme
+            self._require_expression_after_operator(self._previous())
             right = self._comparison()
             expr = ast.BinaryExpression(expr, operator, right)
         return expr
@@ -152,6 +182,7 @@ class Parser:
         expr = self._term()
         while self._match(TokenType.LESS, TokenType.LESS_EQUAL, TokenType.GREATER, TokenType.GREATER_EQUAL):
             operator = self._previous().lexeme
+            self._require_expression_after_operator(self._previous())
             right = self._term()
             expr = ast.BinaryExpression(expr, operator, right)
         return expr
@@ -160,6 +191,7 @@ class Parser:
         expr = self._factor()
         while self._match(TokenType.PLUS, TokenType.MINUS):
             operator = self._previous().lexeme
+            self._require_expression_after_operator(self._previous())
             right = self._factor()
             expr = ast.BinaryExpression(expr, operator, right)
         return expr
@@ -168,6 +200,7 @@ class Parser:
         expr = self._power()
         while self._match(TokenType.STAR, TokenType.SLASH):
             operator = self._previous().lexeme
+            self._require_expression_after_operator(self._previous())
             right = self._power()
             expr = ast.BinaryExpression(expr, operator, right)
         return expr
@@ -176,6 +209,7 @@ class Parser:
         expr = self._unary()
         if self._match(TokenType.CARET):
             operator = self._previous().lexeme
+            self._require_expression_after_operator(self._previous())
             right = self._power()
             expr = ast.BinaryExpression(expr, operator, right)
         return expr
@@ -298,23 +332,30 @@ class Parser:
             return False
         if self.tokens[self.current + 1].type != TokenType.LEFT_PAREN:
             return False
-
+        depth = 1
         cursor = self.current + 2
-        if self.tokens[cursor].type == TokenType.RIGHT_PAREN:
-            return cursor + 1 < len(self.tokens) and self.tokens[cursor + 1].type == TokenType.EQUAL
-
         while cursor < len(self.tokens):
-            if self.tokens[cursor].type != TokenType.IDENTIFIER:
-                return False
-            cursor += 1
-            if cursor >= len(self.tokens):
-                return False
-            if self.tokens[cursor].type == TokenType.RIGHT_PAREN:
-                return cursor + 1 < len(self.tokens) and self.tokens[cursor + 1].type == TokenType.EQUAL
-            if self.tokens[cursor].type != TokenType.COMMA:
+            token_type = self.tokens[cursor].type
+            if token_type == TokenType.LEFT_PAREN:
+                depth += 1
+            elif token_type == TokenType.RIGHT_PAREN:
+                depth -= 1
+                if depth == 0:
+                    return cursor + 1 < len(self.tokens) and self.tokens[cursor + 1].type == TokenType.EQUAL
+            elif token_type in {TokenType.SEMICOLON, TokenType.LEFT_BRACE, TokenType.RIGHT_BRACE, TokenType.EOF}:
                 return False
             cursor += 1
         return False
+
+    def _require_expression_after_operator(self, operator: Token) -> None:
+        if self.expression_function_name is None:
+            return
+        if self._can_start_expression(self._peek()):
+            return
+        raise self._error(
+            self._peek(),
+            f"Expected expression after '{operator.lexeme}' in expression function '{self.expression_function_name}'.",
+        )
 
     def _type_annotation_end_cursor(self, start: int) -> int | None:
         if start >= len(self.tokens) or self.tokens[start].type != TokenType.TYPE:

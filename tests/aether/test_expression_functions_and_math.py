@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from aether.errors import AetherTypeError
+from aether.errors import AetherRuntimeError, AetherSyntaxError, AetherTypeError
+from aether.interpreter import Interpreter
+from aether.lexer import lex
+from aether.parser import Parser
 from aether.runner import run_aether
 
 
@@ -63,6 +66,13 @@ def test_expression_function_wrong_arity_is_error() -> None:
         run_aether("g(x, y) = x + y; println(g(1));")
 
 
+def test_expression_function_runtime_wrong_arity_is_error() -> None:
+    program = Parser(lex("g(x, y) = x + y; println(g(1));")).parse()
+
+    with pytest.raises(AetherRuntimeError, match="Function 'g' expects 2 arguments but got 1."):
+        Interpreter().interpret(program)
+
+
 def test_expression_function_coexists_with_block_function() -> None:
     result = run_aether(
         """
@@ -82,3 +92,45 @@ def test_expression_function_duplicate_name_is_error() -> None:
     with pytest.raises(AetherTypeError, match="already defined"):
         run_aether("f(x) = x + 1; int f(int x) { return x; }")
 
+
+def test_expression_function_duplicate_expression_name_is_error() -> None:
+    with pytest.raises(AetherTypeError, match="Function 'f' is already defined."):
+        run_aether("f(x) = x + 1; f(x) = x - 1;")
+
+
+def test_expression_function_duplicate_after_block_function_is_error() -> None:
+    with pytest.raises(AetherTypeError, match="Function 'f' is already defined."):
+        run_aether("int f(int x) { return x; } f(x) = x + 1;")
+
+
+def test_expression_function_missing_body_expression_is_clear() -> None:
+    with pytest.raises(AetherSyntaxError, match="Expected expression after '=' in expression function 'f'."):
+        run_aether("f(x) = ;")
+
+
+def test_expression_function_bad_parameter_separator_is_clear() -> None:
+    with pytest.raises(
+        AetherSyntaxError,
+        match="Expected ',' or '\\)' in parameter list for expression function 'f'.",
+    ):
+        run_aether("f(x y) = x + y;")
+
+
+def test_expression_function_incomplete_expression_is_clear() -> None:
+    with pytest.raises(AetherSyntaxError, match="Expected expression after '\\+' in expression function 'f'."):
+        run_aether("f(x) = x + ;")
+
+
+def test_expression_function_missing_final_semicolon_is_clear() -> None:
+    with pytest.raises(AetherSyntaxError, match="Expected ';' after expression function declaration."):
+        run_aether("f(x) = x^2 + 1")
+
+
+def test_expression_function_duplicate_parameter_is_clear() -> None:
+    with pytest.raises(AetherSyntaxError, match="Duplicate parameter 'x' in expression function 'f'."):
+        run_aether("f(x, x) = x + 1;")
+
+
+def test_expression_function_keyword_parameter_is_clear() -> None:
+    with pytest.raises(AetherSyntaxError, match="Invalid parameter name 'if' in expression function 'f'."):
+        run_aether("f(if) = if + 1;")
