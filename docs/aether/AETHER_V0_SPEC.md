@@ -699,7 +699,7 @@ The `.ae` editor now selects an `Aether REPL` panel backed by a persistent `Aeth
 
 ## Editor Integration
 
-`.ae` files can now be opened and executed from the editor as experimental Aether scripts and use the persistent Aether REPL for interactive input. `.mtx` files continue to run through the MathLab legacy console; the broader transition to Aether Studio is still in progress.
+`.ae` files are the primary Aether scripts in the editor and use the persistent Aether REPL for interactive input. `.mtx` files continue to run through the MathLab Legacy Console during the compatibility transition.
 
 ## Not Implemented Yet
 
@@ -726,4 +726,4 @@ Aether combines a Java/C-like surface syntax with `{}` blocks and explicit type 
 
 The language is intended for scientific and computational work. Numeric behavior favors predictable real arithmetic, explicit casts for lossy conversions, and early semantic errors whenever possible.
 
-The current Python implementation is a prototype and executable specification. It is deliberately structured around clear lexer, parser, AST, typechecker, scope, and interpreter stages so the core can later be ported to Rust without depending on PyQt, LaTeX, or the legacy MathLab pipeline.
+The current Python implementation is a prototype and executable specification. It is deliberately structured around clear lexer, parser, AST, typechecker, scope, and interpreter stages so the core can later be ported to Rust without depending on PyQt, LaTeX, or the MathLab Legacy pipeline.

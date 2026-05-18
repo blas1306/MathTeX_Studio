@@ -18,11 +18,11 @@ The raw search commands also matched Python bytecode in `__pycache__`; those bin
 These references are visible or documentation-facing and should be reviewed when polishing branding. They should not be changed blindly if they describe the `.mtx` legacy path.
 
 - `docs/aether/AETHER_V0_SPEC.md:702`
-  - Current wording mentions the "MathLab legacy console".
-  - Recommendation: normalize wording to `MathLab Legacy Console` if the sentence is about `.mtx`; otherwise rephrase around Aether as the primary flow.
+  - Cleaned in the first post-audit pass.
+  - Current wording presents `.ae` as the primary Aether script flow and `.mtx` as the MathLab Legacy Console compatibility path.
 - `docs/aether/AETHER_V0_SPEC.md:729`
-  - Mentions the "legacy MathLab pipeline".
-  - Recommendation: keep if it describes implementation history; consider `MathLab Legacy pipeline` for consistent naming.
+  - Cleaned in the first post-audit pass.
+  - Current wording uses `MathLab Legacy pipeline` for the historical compatibility layer.
 
 No current UI strings found by this audit appear to present MathLab as the primary experience. Existing visible UI strings such as `MathLab Legacy Console`, `MathLab Legacy Files (*.mtx)`, and `.mtx` guidance are classified as valid legacy references.
 
@@ -111,7 +111,7 @@ These are safer candidates for a later mechanical rename because they are brandi
 ## Recommended Next Steps
 
 1. Keep the current legacy runtime names stable until `.mtx` and `.mtex` tests are fully runnable in the local environment.
-2. Normalize documentation wording from `MathLab legacy` to `MathLab Legacy` where it refers to the compatibility layer.
+2. Keep documentation wording consistent as `MathLab Legacy` where it refers to the compatibility layer.
 3. Do a scoped Qt helper rename pass for `_apply_mathlab_stylesheet`, `_create_mathlab_panel`, and related object names.
 4. Only after that, decide whether runtime identifiers should stay as `MathLab` for compatibility or move to `MtxLegacy` naming.
 5. Before moving legacy files, add a migration checklist that explicitly protects `.mtx`, `.mtex`, `create_mathlab_repl`, and `\begin{MathLab}`.
