@@ -33,5 +33,5 @@ class NotebookBlock:
 @dataclass
 class NotebookDocument:
     path: Path | None
-    default_language: str = "MathLab"
+    default_language: str = "Aether"
     blocks: list[NotebookBlock] = field(default_factory=list)

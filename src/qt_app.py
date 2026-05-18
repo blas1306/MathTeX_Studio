@@ -35,7 +35,7 @@ from latex_lang import (
     change_working_dir,
     get_working_dir,
 )
-from language_runtime import AETHER_RUNTIME, runtime_for_file, run_source_for_file
+from language_runtime import AETHER_RUNTIME, MATHLAB_RUNTIME, runtime_for_file, run_source_for_file
 from mtex_executor import (
     ejecutar_mtex,
     explain_latex_build_failure,
@@ -104,14 +104,14 @@ BRACKET_MATCH_BG = EDITOR_MATCH_BG
 BRACKET_ERROR_BG = "#a65353"
 BRACKET_MATCH_FG = "#ffffff"
 OCCURRENCE_MATCH_BG = EDITOR_MATCH_BG
-MATHLAB_EDITOR_BG = "#1e1e1e"
-MATHLAB_PANEL_BG = "#252526"
-MATHLAB_TOOLBAR_BG = "#2d2d2d"
-MATHLAB_BORDER = "#3c3c3c"
-MATHLAB_MUTED_TEXT = "#9da7b1"
-MATHLAB_TEXT = "#e3e6ea"
-MATHLAB_OUTPUT_TEXT = "#d4d4d4"
-MATHLAB_STATUS_PALETTE = {
+AETHER_EDITOR_BG = "#1e1e1e"
+AETHER_PANEL_BG = "#252526"
+AETHER_TOOLBAR_BG = "#2d2d2d"
+AETHER_BORDER = "#3c3c3c"
+AETHER_MUTED_TEXT = "#9da7b1"
+AETHER_TEXT = "#e3e6ea"
+AETHER_OUTPUT_TEXT = "#d4d4d4"
+AETHER_STATUS_PALETTE = {
     "neutral": ("#d6d6d6", "#2f3a40", "#54606b"),
     "info": ("#d9ecff", "#1f3a56", "#4f8cc9"),
     "success": ("#daf5d4", "#234a2b", "#5ea36b"),
@@ -140,7 +140,7 @@ SNIPPET_CURSOR_MARKER = "<|cursor|>"
 DARK_APP_STYLESHEET = f"""
 QWidget {{
     background: #181b1f;
-    color: {MATHLAB_TEXT};
+    color: {AETHER_TEXT};
     selection-background-color: #315f8f;
     selection-color: #ffffff;
 }}
@@ -149,11 +149,11 @@ QDialog,
 QMessageBox,
 QFileDialog {{
     background: #181b1f;
-    color: {MATHLAB_TEXT};
+    color: {AETHER_TEXT};
 }}
 QMenuBar {{
     background: #20242a;
-    color: {MATHLAB_TEXT};
+    color: {AETHER_TEXT};
     border-bottom: 1px solid #333942;
 }}
 QMenuBar::item {{
@@ -166,7 +166,7 @@ QMenuBar::item:pressed {{
 }}
 QMenu {{
     background: #20242a;
-    color: {MATHLAB_TEXT};
+    color: {AETHER_TEXT};
     border: 1px solid #3a424c;
 }}
 QMenu::item {{
@@ -187,13 +187,13 @@ QTabWidget::pane {{
 }}
 QTabBar::tab {{
     background: #20242a;
-    color: {MATHLAB_MUTED_TEXT};
+    color: {AETHER_MUTED_TEXT};
     border: 1px solid #333942;
     padding: 7px 12px;
 }}
 QTabBar::tab:selected {{
     background: #262b31;
-    color: {MATHLAB_TEXT};
+    color: {AETHER_TEXT};
 }}
 QTabBar::tab:hover {{
     background: #2d333a;
@@ -228,7 +228,7 @@ QComboBox,
 QSpinBox,
 QDoubleSpinBox {{
     background: #15181d;
-    color: {MATHLAB_TEXT};
+    color: {AETHER_TEXT};
     border: 1px solid #3a424c;
     border-radius: 5px;
     padding: 3px 6px;
@@ -250,14 +250,14 @@ QTableView,
 QTableWidget {{
     background: #1b1f24;
     alternate-background-color: #20252b;
-    color: {MATHLAB_TEXT};
+    color: {AETHER_TEXT};
     border: 1px solid #313740;
     selection-background-color: #315f8f;
     selection-color: #ffffff;
 }}
 QHeaderView::section {{
     background: #262b31;
-    color: {MATHLAB_MUTED_TEXT};
+    color: {AETHER_MUTED_TEXT};
     border: 1px solid #3a424c;
     padding: 4px 6px;
 }}
@@ -265,7 +265,7 @@ QCheckBox,
 QRadioButton,
 QLabel {{
     background: transparent;
-    color: {MATHLAB_TEXT};
+    color: {AETHER_TEXT};
 }}
 QCheckBox::indicator,
 QRadioButton::indicator {{
@@ -284,12 +284,12 @@ QRadioButton::indicator:checked {{
 }}
 QStatusBar {{
     background: #20242a;
-    color: {MATHLAB_TEXT};
+    color: {AETHER_TEXT};
     border-top: 1px solid #333942;
 }}
 QToolTip {{
     background: #20242a;
-    color: {MATHLAB_TEXT};
+    color: {AETHER_TEXT};
     border: 1px solid #4a5360;
     padding: 4px;
 }}
@@ -340,12 +340,12 @@ def apply_dark_qt_theme(app: QtWidgets.QApplication | None = None) -> None:
 
     palette = QtGui.QPalette()
     palette.setColor(QtGui.QPalette.ColorRole.Window, QtGui.QColor("#181b1f"))
-    palette.setColor(QtGui.QPalette.ColorRole.WindowText, QtGui.QColor(MATHLAB_TEXT))
+    palette.setColor(QtGui.QPalette.ColorRole.WindowText, QtGui.QColor(AETHER_TEXT))
     palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor("#15181d"))
     palette.setColor(QtGui.QPalette.ColorRole.AlternateBase, QtGui.QColor("#20252b"))
     palette.setColor(QtGui.QPalette.ColorRole.ToolTipBase, QtGui.QColor("#20242a"))
-    palette.setColor(QtGui.QPalette.ColorRole.ToolTipText, QtGui.QColor(MATHLAB_TEXT))
-    palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(MATHLAB_TEXT))
+    palette.setColor(QtGui.QPalette.ColorRole.ToolTipText, QtGui.QColor(AETHER_TEXT))
+    palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(AETHER_TEXT))
     palette.setColor(QtGui.QPalette.ColorRole.Button, QtGui.QColor("#262b31"))
     palette.setColor(QtGui.QPalette.ColorRole.ButtonText, QtGui.QColor("#d7dce1"))
     palette.setColor(QtGui.QPalette.ColorRole.BrightText, QtGui.QColor("#ffffff"))
@@ -1235,7 +1235,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         super().__init__()
         apply_dark_qt_theme()
         set_plot_mode("interactive")
-        self.setWindowTitle("MathTeX Studio")
+        self.setWindowTitle("Aether Studio")
         self.resize(1200, 720)
         self._temp_preview_dir = tempfile.TemporaryDirectory(prefix="mathtex_preview_")
         self._temp_preview_path = Path(self._temp_preview_dir.name)
@@ -1243,7 +1243,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self.runtime = MathRuntime()
         self.mathlab_repl = create_mathlab_repl(self.runtime)
         self.aether_repl = create_aether_repl()
-        self.console_engine: ReplController = self.mathlab_repl
+        self.console_engine: ReplController = self.aether_repl
         self._plot_listener_registered = False
         self._plot_windows: list[QtWidgets.QMainWindow] = []
         self._untitled_counter = 1
@@ -1300,7 +1300,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
     # ----- UI -------------------------------------------------------------
     def _build_ui(self) -> None:
         central_tabs = QtWidgets.QTabWidget()
-        central_tabs.addTab(self._build_script_tab(), "MathLab")
+        central_tabs.addTab(self._build_script_tab(), "Aether")
         central_tabs.addTab(self._build_mtex_tab(), "MTeX Studio")
         central_tabs.addTab(self._build_notebook_tab(), "Notebook")
         central_tabs.currentChanged.connect(lambda _idx: self._handle_active_context_changed())
@@ -1345,7 +1345,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             f"""
             QStatusBar {{
                 background: #20242a;
-                color: {MATHLAB_TEXT};
+                color: {AETHER_TEXT};
                 border-top: 1px solid #333942;
             }}
             QStatusBar::item {{
@@ -1363,18 +1363,18 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
                 border-color: #4b5561;
             }}
             QFrame#mathLabToolbarCard {{
-                background: {MATHLAB_TOOLBAR_BG};
-                border: 1px solid {MATHLAB_BORDER};
+                background: {AETHER_TOOLBAR_BG};
+                border: 1px solid {AETHER_BORDER};
                 border-radius: 10px;
             }}
             QFrame#mathLabPanel,
             QFrame#mathLabPanelMuted,
             QFrame#mathLabPanelPrimary {{
-                background: {MATHLAB_PANEL_BG};
+                background: {AETHER_PANEL_BG};
                 border-radius: 10px;
             }}
             QFrame#mathLabPanel {{
-                border: 1px solid {MATHLAB_BORDER};
+                border: 1px solid {AETHER_BORDER};
             }}
             QFrame#mathLabPanelMuted {{
                 border: 1px solid #44484f;
@@ -1383,27 +1383,27 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
                 border: 1px solid #4a4f58;
             }}
             QLabel#mathLabPanelTitle {{
-                color: {MATHLAB_TEXT};
+                color: {AETHER_TEXT};
                 background: transparent;
                 border: none;
                 font-size: 13px;
                 font-weight: 600;
             }}
             QLabel#mathLabPanelSubtitle {{
-                color: {MATHLAB_MUTED_TEXT};
+                color: {AETHER_MUTED_TEXT};
                 background: transparent;
                 border: none;
                 font-size: 11px;
             }}
             QLabel#mathLabToolbarTitle {{
-                color: {MATHLAB_TEXT};
+                color: {AETHER_TEXT};
                 background: transparent;
                 border: none;
                 font-size: 14px;
                 font-weight: 600;
             }}
             QLabel#mathLabToolbarSubtitle {{
-                color: {MATHLAB_MUTED_TEXT};
+                color: {AETHER_MUTED_TEXT};
                 background: transparent;
                 border: none;
                 font-size: 11px;
@@ -1431,14 +1431,14 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             }}
             QTabWidget#mathLabScriptTabs::pane {{
                 background: #20252a;
-                border: 1px solid {MATHLAB_BORDER};
+                border: 1px solid {AETHER_BORDER};
                 border-radius: 10px;
                 top: -1px;
             }}
             QTabWidget#mathLabScriptTabs QTabBar::tab {{
                 background: #262b31;
-                color: {MATHLAB_MUTED_TEXT};
-                border: 1px solid {MATHLAB_BORDER};
+                color: {AETHER_MUTED_TEXT};
+                border: 1px solid {AETHER_BORDER};
                 border-bottom: none;
                 border-top-left-radius: 8px;
                 border-top-right-radius: 8px;
@@ -1446,20 +1446,20 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
                 margin-right: 3px;
             }}
             QTabWidget#mathLabScriptTabs QTabBar::tab:selected {{
-                background: {MATHLAB_EDITOR_BG};
-                color: {MATHLAB_TEXT};
+                background: {AETHER_EDITOR_BG};
+                color: {AETHER_TEXT};
             }}
             QDockWidget#ConsoleDock::title,
             QDockWidget#workspaceDock::title {{
                 background: #20242a;
-                color: {MATHLAB_TEXT};
+                color: {AETHER_TEXT};
                 border: 1px solid #333942;
                 padding: 4px 8px;
             }}
             QTableWidget#mathLabWorkspaceTable {{
                 background: #1b1f24;
                 alternate-background-color: #20252b;
-                color: {MATHLAB_TEXT};
+                color: {AETHER_TEXT};
                 border: 1px solid #313740;
                 border-radius: 7px;
                 gridline-color: #313740;
@@ -1470,7 +1470,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             }}
             QTableWidget#mathLabWorkspaceTable QHeaderView::section {{
                 background: #262b31;
-                color: {MATHLAB_MUTED_TEXT};
+                color: {AETHER_MUTED_TEXT};
                 border: 1px solid #3a424c;
                 padding: 4px 6px;
             }}
@@ -1512,7 +1512,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         return frame
 
     def _set_runtime_status(self, state: str, *, tone: str = "neutral", message: str | None = None) -> None:
-        fg, bg, border = MATHLAB_STATUS_PALETTE.get(tone, MATHLAB_STATUS_PALETTE["neutral"])
+        fg, bg, border = AETHER_STATUS_PALETTE.get(tone, AETHER_STATUS_PALETTE["neutral"])
         if self.runtime_status_label is not None:
             self.runtime_status_label.setText(state)
             self.runtime_status_label.setStyleSheet(
@@ -1531,7 +1531,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
 
     def _on_console_command_started(self, _command: str) -> None:
         profile = self.console_engine.profile
-        label = "Aether input" if profile.id == "aether" else "MathLab command"
+        label = "Aether input" if profile.id == "aether" else "MathLab Legacy command"
         self._set_runtime_status("Running", tone="info", message=f"Running {label}...")
 
     def _on_console_command_finished(self, success: bool) -> None:
@@ -1673,8 +1673,8 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             "studio_insert_table": self._make_menu_action("Table Skeleton", lambda: self._insert_named_mtex_snippet("table")),
             "studio_insert_figure": self._make_menu_action("Figure Skeleton", lambda: self._insert_named_mtex_snippet("figure")),
             "studio_insert_mathtex": self._make_menu_action("MathTeX Block", lambda: self._insert_named_mtex_snippet("mathtex")),
-            "help_about": self._make_menu_action("About MathTeX", self._show_about_dialog),
-            "help_interactive": self._make_menu_action("MathLab Help", self._show_interactive_help),
+            "help_about": self._make_menu_action("About Aether Studio", self._show_about_dialog),
+            "help_interactive": self._make_menu_action("Aether / Legacy Help", self._show_interactive_help),
             "help_studio": self._make_menu_action("MTeX Studio Help", self._show_studio_help),
         }
 
@@ -1722,9 +1722,9 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
     def _current_repl_controller(self) -> ReplController:
         doc = self._current_script_doc() if hasattr(self, "script_tab_widget") else None
         runtime = runtime_for_file((doc or {}).get("path") or (doc or {}).get("name"))
-        if runtime == AETHER_RUNTIME:
-            return self.aether_repl
-        return self.mathlab_repl
+        if runtime == MATHLAB_RUNTIME:
+            return self.mathlab_repl
+        return self.aether_repl
 
     def _sync_repl_for_active_script(self) -> None:
         target = self._current_repl_controller()
@@ -1997,7 +1997,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         toolbar_header = QtWidgets.QVBoxLayout()
         toolbar_header.setContentsMargins(0, 0, 0, 0)
         toolbar_header.setSpacing(2)
-        toolbar_title = QtWidgets.QLabel("MathLab")
+        toolbar_title = QtWidgets.QLabel("Aether")
         toolbar_title.setObjectName("mathLabToolbarTitle")
         toolbar_subtitle = QtWidgets.QLabel("Working directory and execution shortcuts")
         toolbar_subtitle.setObjectName("mathLabToolbarSubtitle")
@@ -2008,7 +2008,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         directory_row = QtWidgets.QHBoxLayout()
         directory_row.setSpacing(6)
         directory_label = QtWidgets.QLabel("Working Directory:")
-        directory_label.setStyleSheet(f"color: {MATHLAB_MUTED_TEXT};")
+        directory_label.setStyleSheet(f"color: {AETHER_MUTED_TEXT};")
         directory_row.addWidget(directory_label)
 
         self.dir_combo = QtWidgets.QComboBox()
@@ -2023,7 +2023,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             f"""
             QComboBox {{
                 background: #262b31;
-                color: {MATHLAB_TEXT};
+                color: {AETHER_TEXT};
                 border: 1px solid #3a424c;
                 border-radius: 4px;
                 padding: 3px 8px;
@@ -2033,7 +2033,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             }}
             QComboBox QAbstractItemView {{
                 background: #1f2328;
-                color: {MATHLAB_TEXT};
+                color: {AETHER_TEXT};
                 selection-background-color: #2d333a;
             }}
         """
@@ -2238,7 +2238,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             except Exception:
                 pass
         name = str(doc.get("name") or "").strip()
-        return name or "untitled.mtx"
+        return name or "untitled.ae"
 
     def _build_console_dock(self) -> None:
         profile = self.console_engine.profile
@@ -2466,7 +2466,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
 
     # ----- Script docs ----------------------------------------------------
     def _new_script_file(self, initial: bool = False) -> None:
-        name = f"untitled_{self._untitled_counter}.mtx"
+        name = f"untitled_{self._untitled_counter}.ae"
         self._untitled_counter += 1
         self._create_script_document(name=name, path=None, content="", announce=not initial)
 
@@ -2475,7 +2475,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         editor.set_autocomplete_document_kind("script")
         editor.set_autocomplete_workspace_provider(self._current_workspace_snapshot)
         editor.set_surface_theme(
-            background=MATHLAB_EDITOR_BG,
+            background=AETHER_EDITOR_BG,
             line_number_color="#858585",
             current_line_color="#2b3036",
         )
@@ -2503,7 +2503,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         widget = doc.get("widget")
         if widget is None:
             return
-        name = doc.get("name") or "untitled.mtx"
+        name = doc.get("name") or "untitled.ae"
         title = f"*{name}" if doc.get("dirty") else name
         idx = self.script_tab_widget.indexOf(widget)
         if idx >= 0:
@@ -2571,7 +2571,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         return "cancel"
 
     def _prompt_script_destination(self, doc=None):
-        initial = "new_script.mtx"
+        initial = "new_script.ae"
         if doc and doc.get("path"):
             try:
                 initial = Path(doc["path"]).name
@@ -2583,13 +2583,13 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
             self,
             "Save Script",
             str(get_working_dir() / initial),
-            "Script Files (*.mtx *.ae);;MathTeX Files (*.mtx);;Aether Files (*.ae);;All Files (*)",
+            "Script Files (*.ae *.mtx);;Aether Files (*.ae);;MathLab Legacy Files (*.mtx);;All Files (*)",
         )
         if not filename:
             return None
         path = Path(filename)
         if path.suffix.lower() not in {".mtx", ".ae"}:
-            path = path.with_suffix(".mtx")
+            path = path.with_suffix(".ae")
         return path
 
     def _write_script_document(self, doc: dict, path: Path) -> None:
@@ -2670,7 +2670,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
                 self,
                 "Open Script File",
                 str(get_working_dir()),
-                "Script Files (*.mtx *.ae);;MathTeX Files (*.mtx);;Aether Files (*.ae);;All Files (*)",
+                "Script Files (*.ae *.mtx);;Aether Files (*.ae);;MathLab Legacy Files (*.mtx);;All Files (*)",
             )
             if not filename:
                 return
@@ -2838,22 +2838,23 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
     def _show_about_dialog(self) -> None:
         QtWidgets.QMessageBox.about(
             self,
-            "About MathTeX",
+            "About Aether Studio",
             (
-                "MathTeX combines two workflows in one Qt app:\n\n"
-                "- MathLab for .mtx scripts, console, workspace, and working directory.\n"
+                "Aether Studio is migrating toward Aether as the primary language:\n\n"
+                "- Aether for .ae scripts, the default REPL, and new notebook code blocks.\n"
+                "- MathLab Legacy for .mtx scripts, legacy console, workspace, and working directory.\n"
                 "- MTeX Studio for projects, .mtex documents, PDF preview, and build outputs."
             ),
         )
 
     def _show_interactive_help(self) -> None:
         if self._open_documentation_file("docs/guia_de_uso.md"):
-            self.append_output("[Help] Opened the MathTeX guide for the MathLab workflow.")
+            self.append_output("[Help] Opened the Aether / Legacy guide.")
             return
         QtWidgets.QMessageBox.information(
             self,
-            "MathLab Help",
-            "The guide file could not be opened. You can still use commands like \\help, \\who, \\whos, and \\clear from the console.",
+            "Aether / Legacy Help",
+            "The guide file could not be opened. Aether is the default; .mtx files continue to use MathLab Legacy.",
         )
 
     def _show_studio_help(self) -> None:
@@ -2924,7 +2925,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
         self._refresh_menu_bar_for_active_context()
 
     def _update_window_title(self) -> None:
-        self.setWindowTitle("MathTeX Studio")
+        self.setWindowTitle("Aether Studio")
 
     def _project_root_dir(self) -> Path | None:
         if self.current_project is None:
@@ -3225,7 +3226,7 @@ class MathTeXQtWindow(QtWidgets.QMainWindow):  # type: ignore[misc]
                     self,
                     "MathTeX",
                     "Only .mtex documents can be compiled to PDF in MTeX Studio.\n"
-                    "Open .mtx scripts in MathLab and use Run All instead.",
+                    "Open .mtx scripts in MathLab Legacy and use Run All instead.",
                 )
                 return None
             if not self._persist_mtex(path, announce=False):

@@ -6,13 +6,13 @@ from pathlib import Path
 from notebook_model import NotebookBlock, NotebookDocument, NotebookOutput
 
 
-_BEGIN_RE = re.compile(r"^\\begin\{(?P<language>code|MathLab)\}$")
+_BEGIN_RE = re.compile(r"^\\begin\{(?P<language>code|Aether|MathLab)\}$")
 
 
 def parse_notebook_source(
     source: str,
     path: Path | None = None,
-    default_language: str = "MathLab",
+    default_language: str = "Aether",
 ) -> NotebookDocument:
     document = NotebookDocument(path=path, default_language=default_language)
     lines = source.splitlines(keepends=True)
@@ -61,7 +61,7 @@ def parse_notebook_source(
         append_latex(line_number - 1)
 
         raw_language = begin_match.group("language")
-        language = default_language if raw_language == "code" else "MathLab"
+        language = default_language if raw_language == "code" else raw_language
         end_marker = rf"\end{{{raw_language}}}"
         code_start_line = line_number + 1
         code_lines: list[str] = []

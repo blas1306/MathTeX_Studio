@@ -72,7 +72,7 @@ def test_notebook_editor_runs_code_block_and_exports_to_mtex(qapp) -> None:
         outputs = [editor for editor in view.findChildren(QtWidgets.QPlainTextEdit) if editor.objectName() == "notebookEditorOutput"]
         assert "STDOUT: ran" in outputs[0].toPlainText()
         assert view.document.blocks[1].status == "ok"
-        assert view.to_mtex() == "Intro\n\\begin{code}\na = 1;\n\\end{code}\n"
+        assert view.to_mtex() == "Intro\n\\begin{MathLab}\na = 1;\n\\end{MathLab}\n"
     finally:
         view.close()
         qapp.processEvents()

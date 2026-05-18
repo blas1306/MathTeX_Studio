@@ -6,7 +6,9 @@ import numpy as np
 import sympy as sp
 from sympy.matrices import MatrixBase
 
+from aether import AetherRuntimeError, AetherSession, AetherSyntaxError, AetherTypeError
 from console_engine import MathRuntime, capture_to_events
+from language_runtime import format_aether_error
 from latex_lang import iter_workspace_items
 from notebook_model import NotebookBlock, NotebookOutput
 
@@ -14,12 +16,14 @@ from notebook_model import NotebookBlock, NotebookOutput
 _PREVIEW_MAX_ROWS = 5
 _PREVIEW_MAX_COLS = 5
 _PREVIEW_MAX_TEXT = 80
+AETHER_NOTEBOOK_ERRORS = (AetherSyntaxError, AetherTypeError, AetherRuntimeError)
 
 
 class NotebookRunner:
     def __init__(self, runtime: MathRuntime | None = None) -> None:
         self.runtime = runtime or MathRuntime()
         self.runtime.reset_environment()
+        self.aether_session = AetherSession()
 
     def run_block(self, block: NotebookBlock) -> NotebookBlock:
         if block.kind != "code":
@@ -28,6 +32,8 @@ class NotebookRunner:
         block.status = "running"
         block.outputs = []
 
+        if block.language == "Aether":
+            return self._run_aether_block(block)
         if block.language != "MathLab":
             block.status = "error"
             block.outputs.append(NotebookOutput(kind="error", text="Unsupported notebook language"))
@@ -61,6 +67,31 @@ class NotebookRunner:
             )
 
         block.status = "error" if has_error else "ok"
+        return block
+
+    def _run_aether_block(self, block: NotebookBlock) -> NotebookBlock:
+        before = _snapshot_by_name(self.aether_session.workspace_snapshot())
+        try:
+            result = self.aether_session.run(block.source)
+        except AETHER_NOTEBOOK_ERRORS as exc:
+            block.status = "error"
+            block.outputs.append(NotebookOutput(kind="error", text=format_aether_error(exc)))
+            return block
+
+        if result.output:
+            block.outputs.append(NotebookOutput(kind="stdout", text=result.output.rstrip("\n")))
+
+        variable_changes = _workspace_variable_changes(before, self.aether_session.workspace_snapshot(), {})
+        if variable_changes:
+            block.outputs.append(
+                NotebookOutput(
+                    kind="variables",
+                    text=_format_variable_changes(variable_changes),
+                    data=variable_changes,
+                )
+            )
+
+        block.status = "ok"
         return block
 
 

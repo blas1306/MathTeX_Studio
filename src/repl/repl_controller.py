@@ -34,7 +34,7 @@ AETHER_PROFILE = ReplProfile(
     subtitle="Aether interactive REPL session",
     prompt="aether> ",
     welcome_text=(
-        "Welcome to MathTeX Studio\n"
+        "Welcome to Aether Studio\n"
         "Aether interactive REPL session ready.\n"
         "Use print(...) or println(...) for output. Ctrl+L clears the transcript."
     ),
@@ -43,11 +43,11 @@ AETHER_PROFILE = ReplProfile(
 MATHLAB_PROFILE = ReplProfile(
     id="mathlab",
     title="MathLab Legacy Console",
-    subtitle="Interactive MathLab legacy console session",
+    subtitle="Interactive MathLab Legacy console session",
     prompt="mathlab> ",
     welcome_text=(
-        "Welcome to MathTeX Studio\n"
-        "MathLab legacy console ready.\n"
+        "Welcome to Aether Studio\n"
+        "MathLab Legacy console ready for .mtx files.\n"
         "Enter runs the current command. Use Up/Down for history and Ctrl+L to clear."
     ),
 )

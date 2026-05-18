@@ -100,7 +100,7 @@ def test_compile_guides_user_when_active_project_file_is_mtx(
     assert compile_calls == []
     assert messages == [
         "Only .mtex documents can be compiled to PDF in MTeX Studio.\n"
-        "Open .mtx scripts in MathLab and use Run All instead."
+        "Open .mtx scripts in MathLab Legacy and use Run All instead."
     ]
 
 
@@ -111,5 +111,5 @@ def test_window_title_stays_constant_when_project_is_open(studio_window, qapp) -
     window._update_window_title()
     qapp.processEvents()
 
-    assert window.windowTitle() == "MathTeX Studio"
+    assert window.windowTitle() == "Aether Studio"
 

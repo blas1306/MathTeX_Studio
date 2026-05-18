@@ -24,7 +24,7 @@ class SourceRunResult:
 
 
 AETHER_RUNTIME = FileRuntime("aether", "Aether", (".ae",))
-MATHLAB_RUNTIME = FileRuntime("mathlab", "MathLab legacy", (".mtx",))
+MATHLAB_RUNTIME = FileRuntime("mathlab", "MathLab Legacy", (".mtx",))
 UNKNOWN_RUNTIME = FileRuntime("unknown", "Current editor", ())
 
 AETHER_ERRORS = (AetherSyntaxError, AetherTypeError, AetherRuntimeError)
@@ -94,7 +94,7 @@ def _run_mathlab_source(source: str, *, math_runtime: MathRuntime | None = None)
                     runtime=MATHLAB_RUNTIME,
                     success=False,
                     output="".join(output_parts),
-                    error="MathLab legacy execution stopped due to an error.",
+                    error="MathLab Legacy execution stopped due to an error.",
                 )
     except Exception as exc:  # pragma: no cover - defensive legacy adapter
         return SourceRunResult(runtime=MATHLAB_RUNTIME, success=False, error=f"{type(exc).__name__}: {exc}")

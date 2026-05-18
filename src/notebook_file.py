@@ -11,7 +11,7 @@ NOTEBOOK_FILE_TYPE = "mathtex-notebook"
 NOTEBOOK_FILE_VERSION = 1
 
 
-def new_notebook_document(default_language: str = "MathLab") -> NotebookDocument:
+def new_notebook_document(default_language: str = "Aether") -> NotebookDocument:
     return NotebookDocument(path=None, default_language=default_language, blocks=[])
 
 
@@ -24,7 +24,7 @@ def load_notebook_file(path: Path) -> NotebookDocument:
     if raw.get("version") != NOTEBOOK_FILE_VERSION:
         raise ValueError(f"Unsupported notebook file version: {raw.get('version')!r}.")
 
-    default_language = _string_or_default(raw.get("default_language"), "MathLab")
+    default_language = _string_or_default(raw.get("default_language"), "Aether")
     blocks_raw = raw.get("blocks", [])
     if not isinstance(blocks_raw, list):
         raise ValueError("Notebook blocks must be a list.")
@@ -61,7 +61,7 @@ def export_notebook_to_mtex(document: NotebookDocument) -> str:
             continue
 
         language = block.language or document.default_language
-        environment = "code" if language in {document.default_language, "MathLab"} else language
+        environment = "code" if language == document.default_language else language
         parts.append(f"\\begin{{{environment}}}\n")
         parts.append(block.source)
         if block.source and not block.source.endswith("\n"):

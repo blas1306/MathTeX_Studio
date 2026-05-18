@@ -45,6 +45,17 @@ def test_runs_two_mathlab_blocks_with_shared_workspace() -> None:
     assert float(env_ast["b"]) == 5.0
 
 
+def test_runs_aether_blocks_with_shared_workspace() -> None:
+    runner = NotebookRunner()
+
+    runner.run_block(_code_block("x = 5;", language="Aether"))
+    result = runner.run_block(_code_block("println(x);", language="Aether"))
+
+    assert result.status == "ok"
+    assert result.outputs[0].kind == "stdout"
+    assert result.outputs[0].text == "5"
+
+
 def test_latex_block_is_not_executed() -> None:
     runner = NotebookRunner()
     block = NotebookBlock(

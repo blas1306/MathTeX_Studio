@@ -69,9 +69,9 @@ class ConsoleWidget(QtWidgets.QWidget):  # type: ignore[misc]
         super().__init__(parent)
         self.engine = engine
         self._welcome_text = welcome_text or (
-            "Welcome to MathTeX Studio\n"
-            "MathLab legacy console ready.\n"
-            "Enter runs the current command. Use Up/Down for history and Ctrl+L to clear."
+            "Welcome to Aether Studio\n"
+            "Aether interactive REPL session ready.\n"
+            "Use print(...) or println(...) for output. Ctrl+L clears the transcript."
         )
 
         self.terminal_frame = QtWidgets.QFrame(self)

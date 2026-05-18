@@ -15,11 +15,11 @@ from notebook_file import (
 from notebook_parser import parse_notebook_source
 
 
-def test_new_notebook_document_defaults_to_mathlab() -> None:
+def test_new_notebook_document_defaults_to_aether() -> None:
     document = new_notebook_document()
 
     assert document.path is None
-    assert document.default_language == "MathLab"
+    assert document.default_language == "Aether"
     assert document.blocks == []
 
 
@@ -33,7 +33,7 @@ def test_save_and_load_mtn_preserves_text_and_code_blocks(tmp_path: Path) -> Non
     loaded = load_notebook_file(path)
 
     assert loaded.path == path
-    assert loaded.default_language == "MathLab"
+    assert loaded.default_language == "Aether"
     assert [block.kind for block in loaded.blocks] == ["text", "code"]
     assert [block.source for block in loaded.blocks] == ["Intro LaTeX\n", "a = 1;\n"]
     assert loaded.blocks[1].language == "MathLab"
@@ -55,9 +55,16 @@ def test_save_mtn_uses_versioned_json_format(tmp_path: Path) -> None:
 def test_export_notebook_to_mtex_uses_latex_text_and_code_environments() -> None:
     document = new_notebook_document()
     document.blocks.append(make_notebook_block("text", "\\section{Intro}\n"))
+    document.blocks.append(make_notebook_block("code", 'println("hola");', "Aether"))
+
+    assert export_notebook_to_mtex(document) == '\\section{Intro}\n\\begin{code}\nprintln("hola");\n\\end{code}\n'
+
+
+def test_export_notebook_to_mtex_preserves_explicit_mathlab_legacy_blocks() -> None:
+    document = new_notebook_document()
     document.blocks.append(make_notebook_block("code", "a = 1;", "MathLab"))
 
-    assert export_notebook_to_mtex(document) == "\\section{Intro}\n\\begin{code}\na = 1;\n\\end{code}\n"
+    assert export_notebook_to_mtex(document) == "\\begin{MathLab}\na = 1;\n\\end{MathLab}\n"
 
 
 def test_load_rejects_unknown_notebook_version(tmp_path: Path) -> None:

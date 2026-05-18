@@ -57,7 +57,7 @@ def test_menu_bar_switches_between_interactive_and_studio(
         qapp.processEvents()
 
 
-def test_main_tab_uses_mathlab_name_and_editor_runs_show_script_banner(
+def test_main_tab_uses_aether_name_and_editor_runs_show_script_banner(
     tmp_path: Path,
     monkeypatch,
     qapp,
@@ -69,7 +69,7 @@ def test_main_tab_uses_mathlab_name_and_editor_runs_show_script_banner(
 
     try:
         assert window.central_tabs is not None
-        assert window.central_tabs.tabText(0) == "MathLab"
+        assert window.central_tabs.tabText(0) == "Aether"
 
         window._open_mtex_in_script(script_path)
         qapp.processEvents()
@@ -101,7 +101,7 @@ def test_main_tab_uses_mathlab_name_and_editor_runs_show_script_banner(
         qapp.processEvents()
 
 
-def test_console_uses_studio_branding_and_mathlab_legacy_prompt(
+def test_console_defaults_to_aether_repl_when_no_file_is_open(
     tmp_path: Path,
     monkeypatch,
     qapp,
@@ -110,13 +110,13 @@ def test_console_uses_studio_branding_and_mathlab_legacy_prompt(
     window = MathTeXQtWindow()
 
     try:
-        assert window.windowTitle() == "MathTeX Studio"
+        assert window.windowTitle() == "Aether Studio"
         assert window.console_widget is not None
         console_text = window.console_widget.output.toPlainText()
-        assert "Welcome to MathTeX Studio" in console_text
-        assert "MathLab legacy console ready." in console_text
-        assert "Use Up/Down for history and Ctrl+L to clear." in console_text
-        assert window.console_widget.prompt_label.text() == "mathlab>"
+        assert "Welcome to Aether Studio" in console_text
+        assert "Aether interactive REPL session ready." in console_text
+        assert "Use print(...) or println(...) for output." in console_text
+        assert window.console_widget.prompt_label.text() == "aether>"
         assert window.console_widget.input.placeholderText() == ""
     finally:
         window.close()
@@ -146,6 +146,7 @@ def test_active_script_extension_selects_repl_panel(
         qapp.processEvents()
         assert window.console_dock.windowTitle() == "MathLab Legacy Console"
         assert window.console_widget.prompt_label.text() == "mathlab>"
+        assert "MathLab Legacy console ready for .mtx files." in window.console_widget.output.toPlainText()
     finally:
         window.close()
         qapp.processEvents()

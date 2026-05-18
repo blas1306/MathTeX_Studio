@@ -33,6 +33,12 @@ def test_parse_latex_code_latex_document() -> None:
 
 
 def test_begin_code_uses_default_language() -> None:
+    document = parse_notebook_source('\\begin{code}\nprintln("hola");\n\\end{code}\n')
+
+    assert document.blocks[0].language == "Aether"
+
+
+def test_begin_code_can_still_use_mathlab_when_default_is_legacy() -> None:
     document = parse_notebook_source("\\begin{code}\na = 1;\n\\end{code}\n", default_language="MathLab")
 
     assert document.blocks[0].language == "MathLab"

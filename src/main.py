@@ -78,7 +78,7 @@ def _qt_error_message() -> str:
 
 
 def _print_missing_dependency_help() -> None:
-    print("Could not start MathTeX Studio because a required Python dependency is missing.")
+    print("Could not start Aether Studio because a required Python dependency is missing.")
     print(f"Python executable: {sys.executable}")
     if STARTUP_IMPORT_ERROR is not None:
         missing = getattr(STARTUP_IMPORT_ERROR, "name", None)
