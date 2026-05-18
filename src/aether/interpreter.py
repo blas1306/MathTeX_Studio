@@ -29,7 +29,7 @@ from .types import (
 
 @dataclass
 class Function:
-    declaration: ast.FunctionDeclaration
+    declaration: ast.FunctionDeclaration | ast.ExpressionFunctionDeclaration
 
 
 @dataclass
@@ -188,6 +188,9 @@ class Interpreter:
         if isinstance(statement, ast.FunctionDeclaration):
             env.define_function(Function(statement))
             return
+        if isinstance(statement, ast.ExpressionFunctionDeclaration):
+            env.define_function(Function(statement))
+            return
         if isinstance(statement, ast.ReturnStatement):
             raise _ReturnSignal(self._evaluate(statement.expression, env))
         raise AetherRuntimeError(f"Unsupported statement {statement!r}.")
@@ -320,6 +323,11 @@ class Interpreter:
             raise AetherRuntimeError(
                 f"Function '{callee}' expects {len(declaration.parameters)} argument(s), got {len(args)}."
             )
+        if isinstance(declaration, ast.ExpressionFunctionDeclaration):
+            local_env = Environment(parent=self.global_env)
+            for parameter, arg in zip(declaration.parameters, args):
+                local_env.define(parameter.name, arg, forbid_shadowing=True)
+            return self._evaluate(declaration.expression, local_env)
         local_env = Environment(parent=self.global_env)
         for parameter, arg in zip(declaration.parameters, args):
             local_env.define(parameter.name, coerce_implicit(arg, parameter.type_name), forbid_shadowing=True)

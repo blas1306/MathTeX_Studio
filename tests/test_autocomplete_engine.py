@@ -214,6 +214,12 @@ class AutocompleteEngineTests(unittest.TestCase):
         self.assertIn("print", names)
         self.assertNotIn("numel", names)
 
+    def test_aether_global_math_builtins_are_suggested_by_prefix(self):
+        suggestions = build_autocomplete_suggestions(AutocompleteRequest(line_text="si", cursor_col=2))
+
+        names = [item.name for item in suggestions]
+        self.assertIn("sin", names)
+
     def test_for_prefix_includes_for_snippet_above_keyword(self):
         suggestions = build_autocomplete_suggestions(AutocompleteRequest(line_text="for", cursor_col=3))
 

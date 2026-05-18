@@ -22,6 +22,8 @@ class Parser:
             return self._function_declaration()
         if self._looks_like_function_declaration():
             return self._function_declaration()
+        if self._looks_like_expression_function_declaration():
+            return self._expression_function_declaration()
         return self._statement()
 
     def _function_declaration(self) -> ast.FunctionDeclaration:
@@ -39,6 +41,22 @@ class Parser:
         self._consume(TokenType.RIGHT_PAREN, "Expected ')' after parameters.")
         body = self._block()
         return ast.FunctionDeclaration(return_type, name, parameters, body)
+
+    def _expression_function_declaration(self) -> ast.ExpressionFunctionDeclaration:
+        name = self._consume(TokenType.IDENTIFIER, "Expected function name.").lexeme
+        self._consume(TokenType.LEFT_PAREN, "Expected '(' after function name.")
+        parameters: list[ast.ExpressionParameter] = []
+        if not self._check(TokenType.RIGHT_PAREN):
+            while True:
+                param_name = self._consume(TokenType.IDENTIFIER, "Expected parameter name.").lexeme
+                parameters.append(ast.ExpressionParameter(param_name))
+                if not self._match(TokenType.COMMA):
+                    break
+        self._consume(TokenType.RIGHT_PAREN, "Expected ')' after parameters.")
+        self._consume(TokenType.EQUAL, "Expected '=' before expression function body.")
+        expression = self._expression()
+        self._consume(TokenType.SEMICOLON, "Expected ';' after expression function.")
+        return ast.ExpressionFunctionDeclaration(name, parameters, expression)
 
     def _statement(self) -> ast.Statement:
         if self._match(TokenType.IF):
@@ -269,6 +287,31 @@ class Parser:
                 if depth == 0:
                     return cursor + 1 < len(self.tokens) and self.tokens[cursor + 1].type == TokenType.LEFT_BRACE
             elif token_type == TokenType.LEFT_BRACE:
+                return False
+            cursor += 1
+        return False
+
+    def _looks_like_expression_function_declaration(self) -> bool:
+        if self.current + 2 >= len(self.tokens):
+            return False
+        if self.tokens[self.current].type != TokenType.IDENTIFIER:
+            return False
+        if self.tokens[self.current + 1].type != TokenType.LEFT_PAREN:
+            return False
+
+        cursor = self.current + 2
+        if self.tokens[cursor].type == TokenType.RIGHT_PAREN:
+            return cursor + 1 < len(self.tokens) and self.tokens[cursor + 1].type == TokenType.EQUAL
+
+        while cursor < len(self.tokens):
+            if self.tokens[cursor].type != TokenType.IDENTIFIER:
+                return False
+            cursor += 1
+            if cursor >= len(self.tokens):
+                return False
+            if self.tokens[cursor].type == TokenType.RIGHT_PAREN:
+                return cursor + 1 < len(self.tokens) and self.tokens[cursor + 1].type == TokenType.EQUAL
+            if self.tokens[cursor].type != TokenType.COMMA:
                 return False
             cursor += 1
         return False

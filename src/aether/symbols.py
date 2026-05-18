@@ -8,11 +8,11 @@ from .types import AetherType
 @dataclass(frozen=True)
 class VariableSymbol:
     name: str
-    type_name: AetherType
+    type_name: AetherType | None
 
 
 @dataclass(frozen=True)
 class FunctionSymbol:
     name: str
-    return_type: AetherType
+    return_type: AetherType | None
     parameters: tuple[VariableSymbol, ...]

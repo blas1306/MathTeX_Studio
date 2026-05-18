@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 
+from . import ast
 from .interpreter import Function, Interpreter
 from .lexer import lex
 from .parser import Parser
@@ -17,6 +18,7 @@ from .types import AetherValue, ArrayType, MatrixType, type_to_string
 class _SessionSnapshot:
     checker_variables: dict[str, VariableSymbol]
     checker_functions: dict[str, FunctionSymbol]
+    checker_expression_functions: dict[str, ast.ExpressionFunctionDeclaration]
     runtime_values: dict[str, AetherValue]
     runtime_functions: dict[str, Function]
 
@@ -65,6 +67,7 @@ class AetherSession:
         return _SessionSnapshot(
             checker_variables=deepcopy(self._type_checker.global_scope.symbols),
             checker_functions=deepcopy(self._type_checker.functions),
+            checker_expression_functions=deepcopy(self._type_checker.expression_functions),
             runtime_values=deepcopy(self._interpreter.global_env.variable_scope.symbols),
             runtime_functions=deepcopy(self._interpreter.global_env.functions),
         )
@@ -72,6 +75,8 @@ class AetherSession:
     def _restore(self, snapshot: _SessionSnapshot) -> None:
         self._type_checker.global_scope.symbols = deepcopy(snapshot.checker_variables)
         self._type_checker.functions = deepcopy(snapshot.checker_functions)
+        self._type_checker.expression_functions = deepcopy(snapshot.checker_expression_functions)
+        self._type_checker.expression_function_call_stack.clear()
         self._interpreter.global_env.variable_scope.symbols = deepcopy(snapshot.runtime_values)
         self._interpreter.global_env.functions = deepcopy(snapshot.runtime_functions)
 

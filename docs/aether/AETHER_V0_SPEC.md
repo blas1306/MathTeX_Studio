@@ -386,7 +386,7 @@ println(Math.LinearAlgebra.norm([3 4]));     // 5.0
 println(Math.LinearAlgebra.norm([1 2 2]));   // 3.0
 ```
 
-`sqrt(x)` is also available as a basic real numeric builtin. It accepts one non-negative numeric scalar and returns `double`. Negative real inputs and non-numeric inputs are errors. Complex numbers are not implemented in Aether v0.
+Basic real numeric builtins such as `sin(x)`, `cos(x)`, `exp(x)`, `ln(x)`, `log(x)`, and `sqrt(x)` are available globally. They accept numeric scalar arguments; complex numbers are not implemented in Aether v0.
 
 `Math.LinearAlgebra.transpose(A)` returns a new transposed matrix:
 
@@ -545,7 +545,7 @@ if 1 {
 
 ## Functions
 
-Functions are typed and have typed parameters.
+Block functions are typed and have typed parameters. They are intended for complex logic.
 
 ```aether
 int add(int a, int b) {
@@ -565,6 +565,26 @@ Rules:
 - Function argument types are checked, allowing safe widening.
 - Duplicate parameter names are not allowed.
 - Duplicate global function names are not allowed in v0.
+
+Expression functions are available for compact mathematical definitions:
+
+```aether
+f(x) = x^2 + 1;
+g(x, y) = x^2 + y^2;
+```
+
+Expression function parameters are untyped. The implementation infers the return type from the expression at call sites when possible, and otherwise treats it dynamically until runtime evaluation. Expression functions can call builtins and can read existing globals according to the same global-scope rules as block functions:
+
+```aether
+a = 2;
+f(x) = sin(x)^2 + cos(x)^2;
+g(x) = a*x + 1;
+
+println(f(0.0)); // 1.0
+println(g(3));   // 7
+```
+
+Expression functions and block functions share the same global function namespace. Redefining a function name is an `AetherTypeError`.
 
 Valid widening:
 
@@ -604,8 +624,6 @@ int f(int x) {
 }
 ```
 
-Functions with inferred return types or untyped parameters are not implemented in v0.
-
 ## Builtins
 
 Aether v0 recognizes these builtins:
@@ -616,7 +634,14 @@ Aether v0 recognizes these builtins:
 - `length(array)`
 - `rows(matrix)`
 - `cols(matrix)`
+- `sin(x)`
+- `cos(x)`
+- `tan(x)`
+- `exp(x)`
+- `ln(x)`
+- `log(x)`
 - `sqrt(x)`
+- `abs(x)`
 - `Math.LinearAlgebra.inner(u, v)`
 - `Math.LinearAlgebra.norm(v)`
 - `Math.LinearAlgebra.transpose(A)`
@@ -640,7 +665,7 @@ println(x);
 
 `rows(matrix)` and `cols(matrix)` accept one `Matrix<T>` or `Vector<T>` argument and return `int` dimensions.
 
-`sqrt(x)` accepts one non-negative numeric scalar and returns `double`.
+`sin(x)`, `cos(x)`, `tan(x)`, `exp(x)`, `ln(x)`, `log(x)`, and `sqrt(x)` accept one numeric scalar and return `double`. `ln(x)` is the natural logarithm. `log(x)` is base 10. `ln`, `log`, and `sqrt` reject values outside their real domains. `abs(x)` accepts one numeric scalar and returns the same numeric type.
 
 `Math.LinearAlgebra.inner(u, v)`, `Math.LinearAlgebra.norm(v)`, `Math.LinearAlgebra.transpose(A)`, and `Math.LinearAlgebra.matmul(A, B)` are explicit simulated-namespace builtins for numeric mathematical vectors and matrices. See `Math.LinearAlgebra` above.
 

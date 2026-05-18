@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from math import sqrt
+from collections.abc import Callable
+from math import cos, exp, log, log10, sin, sqrt, tan
 
 from ..errors import AetherRuntimeError, AetherTypeError
 from ..formatting import format_value
@@ -29,7 +30,14 @@ def builtin_definitions() -> list[BuiltinDefinition]:
         BuiltinDefinition("array", _constant_runtime(array_builtin), _array_type, _array_arity),
         BuiltinDefinition("rows", _constant_runtime(rows_builtin), _rows_type, _exactly_one("rows")),
         BuiltinDefinition("cols", _constant_runtime(cols_builtin), _cols_type, _exactly_one("cols")),
+        BuiltinDefinition("sin", _constant_runtime(math_unary_builtin("sin", sin)), _math_unary_type("sin"), _exactly_one("sin")),
+        BuiltinDefinition("cos", _constant_runtime(math_unary_builtin("cos", cos)), _math_unary_type("cos"), _exactly_one("cos")),
+        BuiltinDefinition("tan", _constant_runtime(math_unary_builtin("tan", tan)), _math_unary_type("tan"), _exactly_one("tan")),
+        BuiltinDefinition("exp", _constant_runtime(math_unary_builtin("exp", exp)), _math_unary_type("exp"), _exactly_one("exp")),
+        BuiltinDefinition("ln", _constant_runtime(ln_builtin), _math_unary_type("ln"), _exactly_one("ln")),
+        BuiltinDefinition("log", _constant_runtime(log_builtin), _math_unary_type("log"), _exactly_one("log")),
         BuiltinDefinition("sqrt", _constant_runtime(sqrt_builtin), _sqrt_type, _exactly_one("sqrt")),
+        BuiltinDefinition("abs", _constant_runtime(abs_builtin), _abs_type, _exactly_one("abs")),
     ]
     definitions.extend(
         BuiltinDefinition(
@@ -127,15 +135,47 @@ def cols_builtin(args: list[AetherValue]) -> AetherValue:
     return AetherValue("int", len(value.value[0].value) if value.value else 0)
 
 
+def math_unary_builtin(label: str, function: Callable[[float], float]) -> BuiltinFunction:
+    def builtin(args: list[AetherValue]) -> AetherValue:
+        value = _require_numeric_unary_arg(args, label)
+        return AetherValue("double", function(value.value))
+
+    return builtin
+
+
+def ln_builtin(args: list[AetherValue]) -> AetherValue:
+    value = _require_numeric_unary_arg(args, "ln")
+    if value.value <= 0:
+        raise AetherRuntimeError("ln(...) is only defined for positive real numbers.")
+    return AetherValue("double", log(value.value))
+
+
+def log_builtin(args: list[AetherValue]) -> AetherValue:
+    value = _require_numeric_unary_arg(args, "log")
+    if value.value <= 0:
+        raise AetherRuntimeError("log(...) is only defined for positive real numbers.")
+    return AetherValue("double", log10(value.value))
+
+
 def sqrt_builtin(args: list[AetherValue]) -> AetherValue:
-    if len(args) != 1:
-        raise AetherTypeError("sqrt(...) expects exactly one argument.")
-    value = args[0]
-    if value.type_name not in NUMERIC_TYPES:
-        raise AetherTypeError(f"sqrt(...) expects a numeric argument, got '{type_to_string(value.type_name)}'.")
+    value = _require_numeric_unary_arg(args, "sqrt")
     if value.value < 0:
         raise AetherRuntimeError("sqrt(...) is only defined for non-negative real numbers in Aether v0.")
     return AetherValue("double", sqrt(value.value))
+
+
+def abs_builtin(args: list[AetherValue]) -> AetherValue:
+    value = _require_numeric_unary_arg(args, "abs")
+    return AetherValue(value.type_name, abs(value.value))
+
+
+def _require_numeric_unary_arg(args: list[AetherValue], label: str) -> AetherValue:
+    if len(args) != 1:
+        raise AetherTypeError(f"{label}(...) expects exactly one argument.")
+    value = args[0]
+    if value.type_name not in NUMERIC_TYPES:
+        raise AetherTypeError(f"{label}(...) expects a numeric argument, got '{type_to_string(value.type_name)}'.")
+    return value
 
 
 def _print_type(arg_types: list[AetherType | None]) -> AetherType | None:
@@ -183,14 +223,32 @@ def _matrix_dimension_type(arg_types: list[AetherType | None], label: str) -> Ae
 
 
 def _sqrt_type(arg_types: list[AetherType | None]) -> AetherType | None:
+    return _math_unary_type("sqrt")(arg_types)
+
+
+def _math_unary_type(label: str):
+    def infer(arg_types: list[AetherType | None]) -> AetherType | None:
+        if len(arg_types) != 1:
+            raise AetherTypeError(f"{label}(...) expects exactly one argument.")
+        argument_type = arg_types[0]
+        if argument_type is None:
+            return None
+        if argument_type not in NUMERIC_TYPES:
+            raise AetherTypeError(f"{label}(...) expects a numeric argument, got '{type_to_string(argument_type)}'.")
+        return "double"
+
+    return infer
+
+
+def _abs_type(arg_types: list[AetherType | None]) -> AetherType | None:
     if len(arg_types) != 1:
-        raise AetherTypeError("sqrt(...) expects exactly one argument.")
+        raise AetherTypeError("abs(...) expects exactly one argument.")
     argument_type = arg_types[0]
     if argument_type is None:
         return None
     if argument_type not in NUMERIC_TYPES:
-        raise AetherTypeError(f"sqrt(...) expects a numeric argument, got '{type_to_string(argument_type)}'.")
-    return "double"
+        raise AetherTypeError(f"abs(...) expects a numeric argument, got '{type_to_string(argument_type)}'.")
+    return argument_type
 
 
 def _cast_type(target_type: str):

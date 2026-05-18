@@ -26,6 +26,11 @@ class Parameter:
 
 
 @dataclass(frozen=True)
+class ExpressionParameter:
+    name: str
+
+
+@dataclass(frozen=True)
 class VarDeclaration:
     type_name: AetherType
     name: str
@@ -76,6 +81,13 @@ class FunctionDeclaration:
     name: str
     parameters: list[Parameter]
     body: list[Statement]
+
+
+@dataclass(frozen=True)
+class ExpressionFunctionDeclaration:
+    name: str
+    parameters: list[ExpressionParameter]
+    expression: Expression
 
 
 @dataclass(frozen=True)

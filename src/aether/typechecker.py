@@ -29,6 +29,8 @@ class TypeChecker:
     def __init__(self) -> None:
         self.global_scope: Scope[VariableSymbol] = Scope()
         self.functions: dict[str, FunctionSymbol] = {}
+        self.expression_functions: dict[str, ast.ExpressionFunctionDeclaration] = {}
+        self.expression_function_call_stack: set[str] = set()
         self.current_return_type: AetherType | None = None
         self.loop_variable_stack: list[tuple[str, Scope[VariableSymbol]]] = []
 
@@ -67,6 +69,9 @@ class TypeChecker:
             return
         if isinstance(statement, ast.FunctionDeclaration):
             self._declare_function(statement)
+            return
+        if isinstance(statement, ast.ExpressionFunctionDeclaration):
+            self._declare_expression_function(statement)
             return
         if isinstance(statement, ast.ReturnStatement):
             self._check_return(statement, scope)
@@ -196,6 +201,17 @@ class TypeChecker:
             self.current_return_type = previous_return_type
         if not self._statements_always_return(statement.body):
             raise AetherTypeError(f"Function '{statement.name}' may not return a value on all paths.")
+
+    def _declare_expression_function(self, statement: ast.ExpressionFunctionDeclaration) -> None:
+        if statement.name in self.functions:
+            raise AetherTypeError(f"Function '{statement.name}' is already defined.")
+        parameters = tuple(VariableSymbol(parameter.name, UNKNOWN_TYPE) for parameter in statement.parameters)
+        self.functions[statement.name] = FunctionSymbol(statement.name, UNKNOWN_TYPE, parameters)
+        self.expression_functions[statement.name] = statement
+        function_scope: Scope[VariableSymbol] = Scope(parent=self.global_scope)
+        for parameter in parameters:
+            function_scope.define_local(parameter.name, parameter, forbid_shadowing=True)
+        self._expression_type(statement.expression, function_scope)
 
     def _check_return(self, statement: ast.ReturnStatement, scope: Scope[VariableSymbol]) -> None:
         if self.current_return_type is None:
@@ -352,11 +368,35 @@ class TypeChecker:
                 f"Function '{expression.callee}' expects {len(function.parameters)} arguments "
                 f"but got {len(expression.arguments)}."
             )
+        if function.return_type is UNKNOWN_TYPE:
+            argument_types = [self._expression_type(argument, scope) for argument in expression.arguments]
+            declaration = self.expression_functions.get(expression.callee)
+            if declaration is None:
+                return UNKNOWN_TYPE
+            return self._expression_function_return_type(declaration, argument_types)
         for argument, parameter in zip(expression.arguments, function.parameters):
             argument_type = self._expression_type(argument, scope)
             if argument_type is not UNKNOWN_TYPE and not can_implicitly_convert(argument_type, parameter.type_name):
                 self._raise_implicit_conversion_error(argument_type, parameter.type_name)
         return function.return_type
+
+    def _expression_function_return_type(
+        self,
+        declaration: ast.ExpressionFunctionDeclaration,
+        argument_types: list[AetherType | None],
+    ) -> AetherType | None:
+        if any(argument_type is UNKNOWN_TYPE for argument_type in argument_types):
+            return UNKNOWN_TYPE
+        if declaration.name in self.expression_function_call_stack:
+            return UNKNOWN_TYPE
+        function_scope: Scope[VariableSymbol] = Scope(parent=self.global_scope)
+        for parameter, argument_type in zip(declaration.parameters, argument_types):
+            function_scope.define_local(parameter.name, VariableSymbol(parameter.name, argument_type), forbid_shadowing=True)
+        self.expression_function_call_stack.add(declaration.name)
+        try:
+            return self._expression_type(declaration.expression, function_scope)
+        finally:
+            self.expression_function_call_stack.remove(declaration.name)
 
     def _can_assign(
         self,
