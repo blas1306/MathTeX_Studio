@@ -24,7 +24,10 @@ class SourceRunResult:
 
 
 AETHER_RUNTIME = FileRuntime("aether", "Aether", (".ae",))
+# Compatibility runtime for existing .mtx scripts. Keep MATHLAB_RUNTIME as the
+# stable public name until the legacy file layout has its own migration plan.
 MATHLAB_RUNTIME = FileRuntime("mathlab", "MathLab Legacy", (".mtx",))
+MATHLAB_LEGACY_RUNTIME = MATHLAB_RUNTIME
 UNKNOWN_RUNTIME = FileRuntime("unknown", "Current editor", ())
 
 AETHER_ERRORS = (AetherSyntaxError, AetherTypeError, AetherRuntimeError)
@@ -40,6 +43,7 @@ def runtime_for_file(path: str | Path | None) -> FileRuntime:
 
 
 def create_session_for_language(language: str) -> AetherSession | MathRuntime:
+    """Create an interactive session for Aether or the .mtx MathLab Legacy runtime."""
     key = (language or "").strip().lower()
     if key in {"aether", "ae", ".ae"}:
         return AetherSession()
@@ -79,6 +83,7 @@ def _run_aether_source(source: str) -> SourceRunResult:
 
 
 def _run_mathlab_source(source: str, *, math_runtime: MathRuntime | None = None) -> SourceRunResult:
+    """Run .mtx source through the legacy MathLab adapter."""
     runtime = math_runtime or MathRuntime()
     output_parts: list[str] = []
     try:

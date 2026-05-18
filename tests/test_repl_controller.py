@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from console_engine import MathRuntime
-from repl import create_aether_repl, create_mathlab_repl
+from repl import create_aether_repl, create_legacy_mathlab_repl, create_mathlab_repl
 
 
 def test_aether_repl_session_persists_through_input() -> None:
@@ -60,6 +60,13 @@ def test_aether_repl_profile_uses_aether_prompt() -> None:
 
 def test_mathlab_repl_profile_keeps_legacy_console() -> None:
     repl = create_mathlab_repl(MathRuntime())
+
+    assert repl.profile.title == "MathLab Legacy Console"
+    assert repl.prompt == "mathlab> "
+
+
+def test_explicit_legacy_mathlab_repl_alias_keeps_compatibility() -> None:
+    repl = create_legacy_mathlab_repl(MathRuntime())
 
     assert repl.profile.title == "MathLab Legacy Console"
     assert repl.prompt == "mathlab> "

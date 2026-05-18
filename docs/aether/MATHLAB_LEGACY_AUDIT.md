@@ -67,6 +67,12 @@ These references are part of the `.mtx` compatibility contract and should remain
 
 These names no longer necessarily mean the MathLab runtime, but they are internal implementation names. Rename them only in a focused cleanup pass, after tests are green.
 
+First safe internal pass:
+
+- `src/language_runtime.py` now exposes `MATHLAB_LEGACY_RUNTIME` as an additive alias of `MATHLAB_RUNTIME`.
+- `src/repl/repl_controller.py` now exposes `create_legacy_mathlab_repl(...)` as an additive wrapper around `create_mathlab_repl(...)`.
+- Existing names remain intact for compatibility.
+
 - `src/qt_app.py`
   - `_apply_mathlab_stylesheet`
   - `_create_mathlab_panel`

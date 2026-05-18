@@ -122,6 +122,8 @@ class ReplController:
 
 
 class MathLabReplBackend:
+    """Adapter for the .mtx MathLab Legacy runtime used by the compatibility REPL."""
+
     def __init__(self, runtime: MathRuntime) -> None:
         self.runtime = runtime
 
@@ -143,4 +145,10 @@ def create_aether_repl() -> ReplController:
 
 
 def create_mathlab_repl(runtime: MathRuntime | None = None) -> ReplController:
+    """Create the existing MathLab Legacy REPL; kept for public compatibility."""
     return ReplController(MathLabReplBackend(runtime or MathRuntime()), MATHLAB_PROFILE)
+
+
+def create_legacy_mathlab_repl(runtime: MathRuntime | None = None) -> ReplController:
+    """Explicit alias for the .mtx MathLab Legacy REPL."""
+    return create_mathlab_repl(runtime)

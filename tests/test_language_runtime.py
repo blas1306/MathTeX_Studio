@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from aether import AetherSession
 from console_engine import MathRuntime
-from language_runtime import AETHER_RUNTIME, MATHLAB_RUNTIME, create_session_for_language, run_source_for_file, runtime_for_file
+from language_runtime import (
+    AETHER_RUNTIME,
+    MATHLAB_LEGACY_RUNTIME,
+    MATHLAB_RUNTIME,
+    create_session_for_language,
+    run_source_for_file,
+    runtime_for_file,
+)
 
 
 def test_runtime_for_aether_file_returns_aether() -> None:
@@ -11,6 +18,7 @@ def test_runtime_for_aether_file_returns_aether() -> None:
 
 def test_runtime_for_mtx_file_returns_mathlab_legacy() -> None:
     assert runtime_for_file("legacy.mtx") == MATHLAB_RUNTIME
+    assert MATHLAB_LEGACY_RUNTIME is MATHLAB_RUNTIME
 
 
 def test_run_aether_source_returns_output() -> None:
