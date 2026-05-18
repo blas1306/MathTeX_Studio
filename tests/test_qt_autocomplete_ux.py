@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from PySide6 import QtCore, QtGui
 
 from qt_app import CodeEditor
 
@@ -16,6 +17,37 @@ def editor(qapp):
     qapp.processEvents()
     yield widget
     widget.close()
+    qapp.processEvents()
+
+
+def _press_key(editor: CodeEditor, key: QtCore.Qt.Key) -> None:
+    event = QtGui.QKeyEvent(
+        QtCore.QEvent.Type.KeyPress,
+        key,
+        QtCore.Qt.KeyboardModifier.NoModifier,
+    )
+    editor.keyPressEvent(event)
+
+
+def _press_text(editor: CodeEditor, text: str) -> None:
+    event = QtGui.QKeyEvent(
+        QtCore.QEvent.Type.KeyPress,
+        0,
+        QtCore.Qt.KeyboardModifier.NoModifier,
+        text,
+    )
+    editor.keyPressEvent(event)
+
+
+def _show_completion_for_text(editor: CodeEditor, qapp, text: str) -> None:
+    editor.setPlainText(text)
+    qapp.processEvents()
+    editor._hide_autocomplete()
+    cursor = editor.textCursor()
+    cursor.setPosition(len(text))
+    editor.setTextCursor(cursor)
+    qapp.processEvents()
+    editor._refresh_autocomplete(trigger="text")
     qapp.processEvents()
 
 
@@ -184,6 +216,74 @@ def test_enter_on_keyword_autocomplete_expands_block_immediately(editor: CodeEdi
     assert cursor.blockNumber() == 0
     assert cursor.selectionStart() == len("for ")
     assert cursor.selectionEnd() == len("for x")
+
+
+@pytest.mark.parametrize(
+    ("prefix", "key", "expected_text", "selection_start", "selection_end"),
+    [
+        ("fn", QtCore.Qt.Key.Key_Tab, "f(x) = expression;", len("f(x) = "), len("f(x) = expression")),
+        ("for", QtCore.Qt.Key.Key_Return, "for x in iterable {\n    \n}", len("for "), len("for x")),
+        ("if", QtCore.Qt.Key.Key_Tab, "if condition {\n    \n}", len("if "), len("if condition")),
+        (
+            "while",
+            QtCore.Qt.Key.Key_Return,
+            "while condition {\n    \n}",
+            len("while "),
+            len("while condition"),
+        ),
+        ("func", QtCore.Qt.Key.Key_Tab, "int name() {\n    \n}", len("int "), len("int name")),
+    ],
+)
+def test_aether_snippets_accept_with_tab_or_enter_and_place_cursor(
+    editor: CodeEditor,
+    qapp,
+    prefix: str,
+    key: QtCore.Qt.Key,
+    expected_text: str,
+    selection_start: int,
+    selection_end: int,
+) -> None:
+    _show_completion_for_text(editor, qapp, prefix)
+
+    assert editor._autocomplete_popup is not None
+    current = editor._autocomplete_popup.current_suggestion()
+    assert current is not None
+    assert current.name == prefix
+    assert current.kind == "snippet"
+
+    _press_key(editor, key)
+    qapp.processEvents()
+
+    assert editor.toPlainText() == expected_text
+    cursor = editor.textCursor()
+    assert cursor.selectionStart() == selection_start
+    assert cursor.selectionEnd() == selection_end
+
+
+def test_ife_snippet_inserts_else_branch(editor: CodeEditor, qapp) -> None:
+    _show_completion_for_text(editor, qapp, "ife")
+
+    _press_key(editor, QtCore.Qt.Key.Key_Return)
+    qapp.processEvents()
+
+    assert editor.toPlainText() == "if condition {\n    \n} else {\n    \n}"
+    assert editor.textCursor().selectedText() == "condition"
+
+
+def test_snippet_acceptance_keeps_auto_pairs_working(editor: CodeEditor, qapp) -> None:
+    _show_completion_for_text(editor, qapp, "fn")
+    _press_key(editor, QtCore.Qt.Key.Key_Tab)
+    qapp.processEvents()
+
+    cursor = editor.textCursor()
+    cursor.clearSelection()
+    cursor.setPosition(len(editor.toPlainText()))
+    editor.setTextCursor(cursor)
+    _press_text(editor, "(")
+    qapp.processEvents()
+
+    assert editor.toPlainText() == "f(x) = expression;()"
+    assert editor.textCursor().position() == len("f(x) = expression;(")
 
 
 def test_enter_before_existing_for_line_does_not_expand_block(editor: CodeEditor, qapp) -> None:

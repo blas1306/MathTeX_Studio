@@ -8,6 +8,8 @@ from autocomplete_engine import (
     detect_identifier_prefix,
     filter_command_suggestions,
 )
+from aether.lexer import lex
+from aether.tokens import KEYWORDS, TokenType
 from document_symbols import extract_document_symbols
 
 
@@ -228,6 +230,35 @@ class AutocompleteEngineTests(unittest.TestCase):
         self.assertEqual(suggestions[0].kind, "snippet")
         self.assertIn("{", suggestions[0].insert_text)
         self.assertEqual(suggestions[0].cursor_selection_length, 1)
+
+    def test_aether_control_and_function_snippets_are_available(self):
+        expected = {
+            "fn": ("f(x) = expression;", "Expression function snippet.", len("expression")),
+            "for": ("for x in iterable {\n    \n}", "For loop snippet.", len("x")),
+            "if": ("if condition {\n    \n}", "If block snippet.", len("condition")),
+            "while": ("while condition {\n    \n}", "While loop snippet.", len("condition")),
+            "func": ("int name() {\n    \n}", "Block function snippet.", len("name")),
+            "ife": ("if condition {\n    \n} else {\n    \n}", "If/else block snippet.", len("condition")),
+        }
+
+        for prefix, (insert_text, description, selection_length) in expected.items():
+            with self.subTest(prefix=prefix):
+                suggestions = build_autocomplete_suggestions(
+                    AutocompleteRequest(line_text=prefix, cursor_col=len(prefix))
+                )
+
+                self.assertGreaterEqual(len(suggestions), 1)
+                self.assertEqual(suggestions[0].name, prefix)
+                self.assertEqual(suggestions[0].kind, "snippet")
+                self.assertEqual(suggestions[0].insert_text, insert_text)
+                self.assertEqual(suggestions[0].description, description)
+                self.assertEqual(suggestions[0].cursor_selection_length, selection_length)
+
+    def test_fn_is_editor_snippet_only_not_a_language_keyword(self):
+        self.assertNotIn("fn", KEYWORDS)
+        tokens = lex("fn")
+
+        self.assertEqual(tokens[0].type, TokenType.IDENTIFIER)
 
     def test_aether_types_stay_keyword_suggestions(self):
         suggestions = build_autocomplete_suggestions(AutocompleteRequest(line_text="int", cursor_col=3))

@@ -95,6 +95,8 @@ def _snippet_entry(
     cursor_col: int,
     selection_length: int,
     description: str,
+    *,
+    priority: int = 390,
 ) -> CommandSuggestion:
     return CommandSuggestion(
         name=name,
@@ -105,7 +107,7 @@ def _snippet_entry(
         category="snippets",
         kind="snippet",
         source="language",
-        priority=390,
+        priority=priority,
         match_text=name,
         cursor_backtrack=len(insert_text) - cursor_col,
         cursor_selection_length=selection_length,
@@ -113,10 +115,12 @@ def _snippet_entry(
 
 
 SNIPPET_SUGGESTIONS: tuple[CommandSuggestion, ...] = (
-    _snippet_entry("for", "for x in iterable {\n    \n}", len("for "), len("x"), "For-in block snippet."),
-    _snippet_entry("if", "if condition {\n    \n}", len("if "), len("condition"), "Conditional block snippet."),
-    _snippet_entry("while", "while condition {\n    \n}", len("while "), len("condition"), "While block snippet."),
-    _snippet_entry("func", "int name() {\n    \n}", len("int "), len("name"), "Function declaration snippet."),
+    _snippet_entry("fn", "f(x) = expression;", len("f(x) = "), len("expression"), "Expression function snippet.", priority=430),
+    _snippet_entry("for", "for x in iterable {\n    \n}", len("for "), len("x"), "For loop snippet."),
+    _snippet_entry("if", "if condition {\n    \n}", len("if "), len("condition"), "If block snippet."),
+    _snippet_entry("while", "while condition {\n    \n}", len("while "), len("condition"), "While loop snippet."),
+    _snippet_entry("func", "int name() {\n    \n}", len("int "), len("name"), "Block function snippet."),
+    _snippet_entry("ife", "if condition {\n    \n} else {\n    \n}", len("if "), len("condition"), "If/else block snippet."),
 )
 
 
