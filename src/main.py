@@ -25,6 +25,7 @@ def render_cli_event(event) -> None:
     if event.kind == "clear":
         return
     print(event.text)
+    
 
 
 def run_cli() -> None:
