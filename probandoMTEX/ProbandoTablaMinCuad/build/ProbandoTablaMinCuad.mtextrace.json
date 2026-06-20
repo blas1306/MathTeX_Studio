@@ -1,0 +1,171 @@
+{
+  "version": 1,
+  "source_path": "/home/blas_1306/proyectos/MathTeX_0/probandoMTEX/ProbandoTablaMinCuad/main.mtex",
+  "tex_path": "/home/blas_1306/proyectos/MathTeX_0/probandoMTEX/ProbandoTablaMinCuad/build/ProbandoTablaMinCuad.tex",
+  "pdf_path": "/home/blas_1306/proyectos/MathTeX_0/probandoMTEX/ProbandoTablaMinCuad/build/ProbandoTablaMinCuad.pdf",
+  "synctex_path": "/home/blas_1306/proyectos/MathTeX_0/probandoMTEX/ProbandoTablaMinCuad/build/ProbandoTablaMinCuad.synctex.gz",
+  "synctex_enabled": true,
+  "spans": [
+    {
+      "source_start_line": 1,
+      "source_end_line": 1,
+      "tex_start_line": 1,
+      "tex_end_line": 1,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 2,
+      "source_end_line": 2,
+      "tex_start_line": 2,
+      "tex_end_line": 2,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 3,
+      "source_end_line": 3,
+      "tex_start_line": 3,
+      "tex_end_line": 3,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 4,
+      "source_end_line": 4,
+      "tex_start_line": 4,
+      "tex_end_line": 4,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 5,
+      "source_end_line": 5,
+      "tex_start_line": 5,
+      "tex_end_line": 5,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 6,
+      "source_end_line": 6,
+      "tex_start_line": 6,
+      "tex_end_line": 6,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 7,
+      "source_end_line": 7,
+      "tex_start_line": 7,
+      "tex_end_line": 7,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 8,
+      "source_end_line": 8,
+      "tex_start_line": 8,
+      "tex_end_line": 8,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 9,
+      "source_end_line": 9,
+      "tex_start_line": 9,
+      "tex_end_line": 9,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 10,
+      "source_end_line": 10,
+      "tex_start_line": 10,
+      "tex_end_line": 10,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 11,
+      "source_end_line": 11,
+      "tex_start_line": 11,
+      "tex_end_line": 11,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 12,
+      "source_end_line": 12,
+      "tex_start_line": 12,
+      "tex_end_line": 12,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 13,
+      "source_end_line": 13,
+      "tex_start_line": 13,
+      "tex_end_line": 13,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 14,
+      "source_end_line": 14,
+      "tex_start_line": 14,
+      "tex_end_line": 14,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 70,
+      "source_end_line": 70,
+      "tex_start_line": 15,
+      "tex_end_line": 15,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 71,
+      "source_end_line": 71,
+      "tex_start_line": 16,
+      "tex_end_line": 16,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 72,
+      "source_end_line": 72,
+      "tex_start_line": 17,
+      "tex_end_line": 17,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 73,
+      "source_end_line": 73,
+      "tex_start_line": 18,
+      "tex_end_line": 18,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 74,
+      "source_end_line": 74,
+      "tex_start_line": 19,
+      "tex_end_line": 23,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 75,
+      "source_end_line": 75,
+      "tex_start_line": 24,
+      "tex_end_line": 24,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 76,
+      "source_end_line": 76,
+      "tex_start_line": 25,
+      "tex_end_line": 40,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 77,
+      "source_end_line": 77,
+      "tex_start_line": 41,
+      "tex_end_line": 41,
+      "kind": "source_line"
+    },
+    {
+      "source_start_line": 78,
+      "source_end_line": 78,
+      "tex_start_line": 42,
+      "tex_end_line": 42,
+      "kind": "source_line"
+    }
+  ]
+}
